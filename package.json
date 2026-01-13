@@ -3,7 +3,7 @@
 	"version": "0.0.2",
 	"description": "n8n node for Claira Platform API integration (claira_auth and claira_doc_analysis)",
 	"license": "MIT",
-	"homepage": "https://github.com/claira/n8n-nodes-claira#readme",
+	"homepage": "https://github.com/clairaTech/n8n-nodes-claira#readme",
 	"keywords": [
 		"n8n-community-node-package",
 		"claira",
@@ -16,7 +16,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/claira/n8n-nodes-claira.git"
+		"url": "https://github.com/clairaTech/n8n-nodes-claira.git"
 	},
 	"scripts": {
 		"build": "n8n-node build",

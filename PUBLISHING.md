@@ -91,7 +91,7 @@ Check your package on npm:
 2. Fill in the required information:
    - **Package Name**: `@claira/n8n-nodes-claira`
    - **npm URL**: `https://www.npmjs.com/package/@claira/n8n-nodes-claira`
-   - **GitHub Repository**: `https://github.com/claira/n8n-nodes-claira`
+   - **GitHub Repository**: `https://github.com/clairaTech/n8n-nodes-claira`
    - **Description**: Brief description of what your node does
    - **Category**: Select appropriate category (e.g., "API", "Productivity")
    - **Icon**: Upload your node icon (claira.svg)

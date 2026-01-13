@@ -22,7 +22,7 @@ Then restart your n8n instance.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/claira/n8n-nodes-claira.git
+git clone https://github.com/clairaTech/n8n-nodes-claira.git
 cd n8n-nodes-claira
 ```
 
