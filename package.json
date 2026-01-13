@@ -1,0 +1,61 @@
+{
+	"name": "@claira/n8n-nodes-claira",
+	"version": "0.0.1",
+	"description": "n8n node for Claira Platform API integration (claira_auth and claira_doc_analysis)",
+	"license": "MIT",
+	"homepage": "https://github.com/claira/n8n-nodes-claira#readme",
+	"keywords": [
+		"n8n-community-node-package",
+		"claira",
+		"document-analysis",
+		"api"
+	],
+	"author": {
+		"name": "Claira",
+		"email": "support@claira.io"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/claira/n8n-nodes-claira.git"
+	},
+	"scripts": {
+		"build": "n8n-node build",
+		"build:watch": "tsc --watch",
+		"dev": "n8n-node dev",
+		"lint": "n8n-node lint",
+		"lint:fix": "n8n-node lint --fix",
+		"release": "n8n-node release",
+		"prepublishOnly": "n8n-node prerelease"
+	},
+	"files": [
+		"dist"
+	],
+	"n8n": {
+		"n8nNodesApiVersion": 1,
+		"strict": true,
+		"credentials": [
+			"dist/credentials/ClairaApi.credentials.js"
+		],
+		"nodes": [
+			"dist/nodes/Claira/Claira.node.js"
+		]
+	},
+	"devDependencies": {
+		"@n8n/node-cli": "*",
+		"eslint": "9.32.0",
+		"prettier": "3.6.2",
+		"release-it": "^19.0.4",
+		"typescript": "5.9.2"
+	},
+	"peerDependencies": {
+		"n8n-workflow": "*"
+	},
+	"release-it": {
+		"npm": {
+			"publishArgs": [
+				"--access",
+				"public"
+			]
+		}
+	}
+}
