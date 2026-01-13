@@ -60,9 +60,9 @@ export class Claira implements INodeType {
 						description: 'Authentication operations',
 					},
 					{
-						name: 'Dashboard Template',
+						name: 'Report Agent',
 						value: 'dashboardTemplates',
-						description: 'Dashboard template operations',
+						description: 'Report Agent operations',
 					},
 					{
 						name: 'Deal',
@@ -444,15 +444,15 @@ export class Claira implements INodeType {
 						if (!template) {
 							throw new NodeOperationError(
 								this.getNode(),
-								`Dashboard template with ID ${templateId} not found`,
+								`Report Agent with ID ${templateId} not found`,
 								{ itemIndex: i },
 							);
 						}
 
-						// Create dashboard from template
+						// Create report from report agent
 						const dashboardBody: IDataObject = {
 							deal_id: dealId,
-							title: title || template.title || 'Dashboard',
+							title: title || template.title || 'Report',
 							public: public_,
 							is_default: isDefault,
 						};

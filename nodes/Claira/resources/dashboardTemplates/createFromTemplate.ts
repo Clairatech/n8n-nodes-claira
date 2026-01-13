@@ -15,7 +15,7 @@ export const dashboardCreateFromTemplateDescription: INodeProperties[] = [
 		},
 		default: '',
 		required: true,
-		description: 'The ID of the dashboard template to use',
+		description: 'The ID of the report agent to use',
 	},
 	{
 		displayName: 'Deal ID',
@@ -26,7 +26,7 @@ export const dashboardCreateFromTemplateDescription: INodeProperties[] = [
 		},
 		default: '',
 		required: true,
-		description: 'The ID of the deal to create the dashboard for',
+		description: 'The ID of the deal to create the report for',
 	},
 	{
 		displayName: 'Title',
@@ -36,7 +36,7 @@ export const dashboardCreateFromTemplateDescription: INodeProperties[] = [
 			show: showOnlyForDashboardCreateFromTemplate,
 		},
 		default: '',
-		description: 'Title for the new dashboard (defaults to template title if not provided)',
+		description: 'Title for the new report (defaults to template title if not provided)',
 	},
 	{
 		displayName: 'Public',
@@ -46,7 +46,7 @@ export const dashboardCreateFromTemplateDescription: INodeProperties[] = [
 			show: showOnlyForDashboardCreateFromTemplate,
 		},
 		default: true,
-		description: 'Whether the dashboard should be public',
+		description: 'Whether the report should be public',
 		routing: {
 			send: {
 				type: 'body',
@@ -62,7 +62,7 @@ export const dashboardCreateFromTemplateDescription: INodeProperties[] = [
 			show: showOnlyForDashboardCreateFromTemplate,
 		},
 		default: false,
-		description: 'Whether this should be the default dashboard for the deal',
+		description: 'Whether this should be the default report for the deal',
 		routing: {
 			send: {
 				type: 'body',

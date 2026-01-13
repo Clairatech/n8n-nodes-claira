@@ -19,8 +19,8 @@ export const dashboardTemplateDescription: INodeProperties[] = [
 			{
 				name: 'Get Many',
 				value: 'getAll',
-				action: 'Get many dashboard templates',
-				description: 'Get a list of many available dashboard templates for the client',
+				action: 'Get many report agents',
+				description: 'Get a list of many available report agents for the client',
 				routing: {
 					request: {
 						method: 'GET',
@@ -29,10 +29,10 @@ export const dashboardTemplateDescription: INodeProperties[] = [
 				},
 			},
 			{
-				name: 'Create Dashboard From Template',
+				name: 'Create Report From Report Agent',
 				value: 'createFromTemplate',
-				action: 'Create a dashboard from a template',
-				description: 'Create a new dashboard using a dashboard template',
+				action: 'Create a report from a report agent',
+				description: 'Create a new report using a report agent',
 				routing: {
 					request: {
 						method: 'POST',

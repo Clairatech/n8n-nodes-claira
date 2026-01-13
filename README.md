@@ -6,6 +6,17 @@ This node provides seamless integration with Claira Platform's REST APIs, includ
 - **claira_auth**: Authentication and user management
 - **claira_doc_analysis**: Document analysis, deals, folders, and financial data
 
+## About Claira
+
+[Claira](https://claira.io) is an AI-powered Deal Intelligence Platform designed to revolutionize investment and lending processes in the financial sector. By integrating advanced AI technology, Claira transforms hours of manual work into minutes, enabling teams to underwrite and close more deals efficiently.
+
+**Key Capabilities:**
+- **Accelerated Deal Velocity**: Automates extraction and analysis of complex financial data, allowing investment professionals to focus on strategic decision-making
+- **Investment & Credit Committee Workbench**: Empowers teams to identify term discrepancies, visualize deal attributes through dynamic dashboards, and collaborate seamlessly across underwriting, approval, and closing processes
+- **Institutional Memory Codification**: Captures and analyzes proprietary deal knowledge, facilitating accurate trend analysis and reducing operational risk
+
+For more information about the Claira platform, visit [claira.io](https://claira.io).
+
 ## Features
 
 - 🔐 Automatic authentication and token management
@@ -214,5 +225,5 @@ To publish this node to npm and make it available in n8n Cloud, see [PUBLISHING.
 ## Support
 
 For issues and questions:
-- GitHub Issues: https://github.com/claira/n8n-nodes-claira/issues
-- Claira Documentation: https://docs.claira.io
+- GitHub Issues: https://github.com/Clairatech/n8n-nodes-claira/issues
+- Claira Documentation: request access to support@claira.io

@@ -14,6 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deal operations (get, create, list with filters)
 - Folder operations (get, create, get tree)
 - Financial data operations (get items, get tables)
-- Dashboard template operations (get all, create from template)
+- Report Agent operations (get all, create from template)
 - Automatic authentication and token refresh
 - Support for multiple environments (platform, stable, dev, local)
