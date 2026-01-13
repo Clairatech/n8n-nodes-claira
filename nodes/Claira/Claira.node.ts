@@ -60,11 +60,6 @@ export class Claira implements INodeType {
 						description: 'Authentication operations',
 					},
 					{
-						name: 'Report Agent',
-						value: 'dashboardTemplates',
-						description: 'Report Agent operations',
-					},
-					{
 						name: 'Deal',
 						value: 'deals',
 						description: 'Deal operations (Credit Analysis)',
@@ -83,6 +78,11 @@ export class Claira implements INodeType {
 						name: 'Folder',
 						value: 'folders',
 						description: 'Folder operations',
+					},
+					{
+						name: 'Report Agent',
+						value: 'dashboardTemplates',
+						description: 'Report Agent operations',
 					},
 				],
 				default: 'documents',
