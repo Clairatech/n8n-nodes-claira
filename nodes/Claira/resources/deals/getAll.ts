@@ -13,7 +13,7 @@ export const dealGetManyDescription: INodeProperties[] = [
 		displayOptions: {
 			show: showOnlyForDealGetMany,
 		},
-		default: true,
+		default: false,
 		description: 'Whether to return all results or only up to a given limit',
 	},
 	{
@@ -32,12 +32,6 @@ export const dealGetManyDescription: INodeProperties[] = [
 		},
 		default: 50,
 		description: 'Max number of results to return',
-		routing: {
-			send: {
-				type: 'query',
-				property: 'page_size',
-			},
-		},
 	},
 	{
 		displayName: 'Filters',
@@ -57,12 +51,6 @@ export const dealGetManyDescription: INodeProperties[] = [
 				type: 'string',
 				default: '',
 				description: 'Filter by asset ID',
-				routing: {
-					send: {
-						type: 'query',
-						property: 'asset_id',
-					},
-				},
 			},
 			{
 				displayName: 'Asset Name (Case-Insensitive)',
@@ -70,12 +58,6 @@ export const dealGetManyDescription: INodeProperties[] = [
 				type: 'string',
 				default: '',
 				description: 'Filter by asset name (partial match, case-insensitive)',
-				routing: {
-					send: {
-						type: 'query',
-						property: 'asset_name.ilike',
-					},
-				},
 			},
 			{
 				displayName: 'Asset Name (Like)',
@@ -83,12 +65,6 @@ export const dealGetManyDescription: INodeProperties[] = [
 				type: 'string',
 				default: '',
 				description: 'Filter by asset name (partial match, case-sensitive)',
-				routing: {
-					send: {
-						type: 'query',
-						property: 'asset_name.like',
-					},
-				},
 			},
 			{
 				displayName: 'Created After',
@@ -96,12 +72,6 @@ export const dealGetManyDescription: INodeProperties[] = [
 				type: 'dateTime',
 				default: '',
 				description: 'Filter deals created after this date',
-				routing: {
-					send: {
-						type: 'query',
-						property: 'created_at.gt',
-					},
-				},
 			},
 			{
 				displayName: 'Created Before',
@@ -109,12 +79,6 @@ export const dealGetManyDescription: INodeProperties[] = [
 				type: 'dateTime',
 				default: '',
 				description: 'Filter deals created before this date',
-				routing: {
-					send: {
-						type: 'query',
-						property: 'created_at.lt',
-					},
-				},
 			},
 			{
 				displayName: 'Updated After',
@@ -122,12 +86,6 @@ export const dealGetManyDescription: INodeProperties[] = [
 				type: 'dateTime',
 				default: '',
 				description: 'Filter deals updated after this date',
-				routing: {
-					send: {
-						type: 'query',
-						property: 'updated_at.gt',
-					},
-				},
 			},
 			{
 				displayName: 'Updated Before',
@@ -135,12 +93,6 @@ export const dealGetManyDescription: INodeProperties[] = [
 				type: 'dateTime',
 				default: '',
 				description: 'Filter deals updated before this date',
-				routing: {
-					send: {
-						type: 'query',
-						property: 'updated_at.lt',
-					},
-				},
 			},
 		],
 	},

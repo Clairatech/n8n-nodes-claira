@@ -22,36 +22,18 @@ export const dealDescription: INodeProperties[] = [
 				value: 'getAll',
 				action: 'Get many deals',
 				description: 'Get a list of deals',
-				routing: {
-					request: {
-						method: 'GET',
-						url: '=/credit_analysis/deals/',
-					},
-				},
 			},
 			{
 				name: 'Get',
 				value: 'get',
 				action: 'Get a deal',
 				description: 'Get a single deal by ID',
-				routing: {
-					request: {
-						method: 'GET',
-						url: '=/credit_analysis/deals/{{$parameter.dealId}}/',
-					},
-				},
 			},
 			{
 				name: 'Create',
 				value: 'create',
 				action: 'Create a deal',
 				description: 'Create a new deal',
-				routing: {
-					request: {
-						method: 'POST',
-						url: '=/credit_analysis/deals/',
-					},
-				},
 			},
 		],
 		default: 'getAll',

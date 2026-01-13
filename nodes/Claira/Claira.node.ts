@@ -7,6 +7,7 @@ import {
 	type INodeType,
 	type INodeTypeDescription,
 } from 'n8n-workflow';
+import FormData from 'form-data';
 import {
 	getBaseUrls,
 	ensureAuthenticated,
@@ -145,73 +146,114 @@ export class Claira implements INodeType {
 					} else if (operation === 'upload') {
 						const modelType = this.getNodeParameter('modelType', i) as string;
 						const dealId = this.getNodeParameter('dealId', i, '') as string;
-						const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i, 'data') as string;
+						let binaryPropertyName = this.getNodeParameter('binaryPropertyName', i, 'data') as string;
 						const folderId = this.getNodeParameter('folderId', i, '') as string;
 						const financialTypeIds = this.getNodeParameter('financialTypeIds', i, '') as string;
 						const metadata = this.getNodeParameter('metadata', i, '') as string;
+
+						// Ensure binary property name is set
+						if (!binaryPropertyName || binaryPropertyName.trim() === '') {
+							binaryPropertyName = 'data';
+						}
 
 						const endpoint = dealId
 							? `/credit_analysis/deals/${dealId}/docs/`
 							: `/${modelType}/docs/`;
 
-						// Get binary data
-						const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
-						const dataBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
-						const fileName = binaryData.fileName || 'document.pdf';
-						const mimeType = binaryData.mimeType || 'application/pdf';
-
-						// Use httpRequest directly for multipart/form-data
-						const { docAnalysisUrl } = await getBaseUrls.call(this);
-						const accessToken = await ensureAuthenticated.call(this);
-
-						// Build multipart form data - n8n handles multipart automatically when using binary data
-						const formData: IDataObject = {
-							file: {
-								data: dataBuffer,
-								filename: fileName,
-								contentType: mimeType,
-							},
-						};
-
-						if (folderId) {
-							formData.folder_id = folderId;
-						}
-						if (financialTypeIds) {
-							try {
-								const parsedIds =
-									typeof financialTypeIds === 'string'
-										? JSON.parse(financialTypeIds)
-										: financialTypeIds;
-								formData.financial_type_ids = parsedIds;
-							} catch {
-								throw new NodeOperationError(
-									this.getNode(),
-									'Financial Type IDs must be a valid JSON array. Example: ["uuid1", "uuid2"]',
-								);
-							}
-						}
-						if (metadata) {
-							try {
-								const parsedMetadata =
-									typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
-								formData.metadata = parsedMetadata;
-							} catch {
-								throw new NodeOperationError(
-									this.getNode(),
-									'Metadata must be a valid JSON object',
-								);
-							}
+						// Verify binary data exists
+						const item = items[i];
+						if (!item.binary || !item.binary[binaryPropertyName]) {
+							const availableBinaryProperties = item.binary ? Object.keys(item.binary).join(', ') : 'none';
+							throw new NodeOperationError(
+								this.getNode(),
+								`No binary data found with property name "${binaryPropertyName}". Make sure the previous node outputs binary data, or specify the correct binary property name. Available binary properties: ${availableBinaryProperties}`,
+								{ itemIndex: i },
+							);
 						}
 
-						const requestOptions: IHttpRequestOptions = {
-							method: 'POST',
+						// Verify binary data is accessible
+						try {
+							this.helpers.assertBinaryData(i, binaryPropertyName);
+						} catch (error) {
+							const availableBinaryProperties = item.binary ? Object.keys(item.binary).join(', ') : 'none';
+							throw new NodeOperationError(
+								this.getNode(),
+								`Cannot access binary data with property name "${binaryPropertyName}". Available binary properties: ${availableBinaryProperties}`,
+								{ itemIndex: i },
+							);
+						}
+
+					// Use httpRequest directly for multipart/form-data
+					const { docAnalysisUrl } = await getBaseUrls.call(this);
+					const accessToken = await ensureAuthenticated.call(this);
+
+					// Get binary data buffer and metadata
+					const binaryData = item.binary[binaryPropertyName];
+					const binaryBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
+					
+					// Build multipart form data using FormData (equivalent to setting parameter type = "n8n binary file" in HTTP Request node UI)
+					const formData = new FormData();
+					formData.append('file', binaryBuffer, {
+						filename: binaryData.fileName || 'file',
+						contentType: binaryData.mimeType || 'application/octet-stream',
+					});
+
+					// Add other fields
+					if (folderId) {
+						formData.append('folder_id', folderId);
+					}
+					if (financialTypeIds) {
+						try {
+							const parsedIds =
+								typeof financialTypeIds === 'string'
+									? JSON.parse(financialTypeIds)
+									: financialTypeIds;
+							formData.append('financial_type_ids', JSON.stringify(parsedIds));
+						} catch {
+							throw new NodeOperationError(
+								this.getNode(),
+								'Financial Type IDs must be a valid JSON array. Example: ["uuid1", "uuid2"]',
+							);
+						}
+					}
+					if (metadata) {
+						try {
+							const parsedMetadata =
+								typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+							formData.append('metadata', JSON.stringify(parsedMetadata));
+						} catch {
+							throw new NodeOperationError(
+								this.getNode(),
+								'Metadata must be a valid JSON object',
+							);
+						}
+					}
+						
+					const requestOptions: IHttpRequestOptions = {
+						method: 'POST',
+						url: `${docAnalysisUrl}${endpoint}`,
+						headers: {
+							Authorization: `Bearer ${accessToken}`,
+							// Don't set Content-Type - FormData will set it to multipart/form-data with boundary
+							...formData.getHeaders(),
+						},
+						body: formData,
+						// Explicitly don't use JSON encoding since we're sending multipart/form-data
+						json: false,
+					};
+
+					// Log request details for debugging
+					if (this.logger) {
+						this.logger.debug('Upload request', {
 							url: `${docAnalysisUrl}${endpoint}`,
-							headers: {
-								Authorization: `Bearer ${accessToken}`,
-								Accept: 'application/json',
-							},
-							body: formData,
-						};
+							hasFile: true,
+							fileName: binaryData.fileName,
+							mimeType: binaryData.mimeType,
+							hasFolderId: !!folderId,
+							hasFinancialTypeIds: !!financialTypeIds,
+							hasMetadata: !!metadata,
+						});
+					}
 
 						try {
 							responseData = await this.helpers.httpRequest(requestOptions);
@@ -230,7 +272,54 @@ export class Claira implements INodeType {
 								};
 								responseData = await this.helpers.httpRequest(requestOptions);
 							} else {
-								throw error;
+								// Extract error details from axios error response
+								const axiosError = error as any;
+								const statusCode = axiosError.response?.status || axiosError.statusCode || axiosError.code;
+								const errorResponse = axiosError.response?.data;
+								
+								// Try to extract Flask error message (Flask can return errors in various formats)
+								let errorMessage = 'Unknown error';
+								if (errorResponse) {
+									// Try different common Flask error formats
+									errorMessage =
+										errorResponse.message ||
+										errorResponse.error ||
+										errorResponse.detail ||
+										errorResponse.description ||
+										errorResponse.msg ||
+										errorResponse.file?.[0] || // Field-specific errors
+										errorResponse.file || // Direct field error
+										(typeof errorResponse === 'string' ? errorResponse : null) ||
+										JSON.stringify(errorResponse);
+								} else if (axiosError.message) {
+									errorMessage = axiosError.message;
+								}
+								
+								// Log full error details - this will appear in n8n execution logs
+								if (this.logger) {
+									this.logger.error('Upload request failed', {
+										statusCode,
+										errorResponse: errorResponse ? JSON.stringify(errorResponse, null, 2) : 'No response data',
+										errorMessage,
+										axiosErrorCode: axiosError.code,
+										axiosErrorMessage: axiosError.message,
+										fileName: binaryData.fileName,
+										mimeType: binaryData.mimeType,
+										endpoint,
+										url: `${docAnalysisUrl}${endpoint}`,
+									});
+								}
+								
+								// Always include the full error response in the error message so user can see it
+								const fullErrorDetails = errorResponse
+									? `\n\nFull error response: ${JSON.stringify(errorResponse, null, 2)}`
+									: `\n\nError: ${axiosError.message || JSON.stringify(axiosError)}`;
+								
+								throw new NodeOperationError(
+									this.getNode(),
+									`Upload failed (${statusCode || 'unknown'}): ${errorMessage}${fullErrorDetails}`,
+									{ itemIndex: i },
+								);
 							}
 						}
 					} else if (operation === 'delete') {
@@ -244,14 +333,35 @@ export class Claira implements INodeType {
 					}
 				} else if (resource === 'deals') {
 					if (operation === 'getAll') {
-						const returnAll = this.getNodeParameter('returnAll', i, true) as boolean;
+						const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
 						const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
-						const qs: IDataObject = { ...filters };
+						const qs: IDataObject = {};
+
+						// Log parameters for debugging
+						if (this.logger) {
+							this.logger.debug('[Deals GetAll] Parameters:', {
+								returnAll,
+								filters,
+								limitParam: this.getNodeParameter('limit', i, 50),
+							});
+						}
+
+						// Copy only non-empty filter values
+						if (filters && typeof filters === 'object') {
+							Object.keys(filters).forEach((key) => {
+								const value = filters[key];
+								if (value !== undefined && value !== null && value !== '') {
+									qs[key] = value;
+								}
+							});
+						}
 
 						if (!returnAll) {
 							const limit = this.getNodeParameter('limit', i, 50) as number;
-							qs.page_size = limit;
-							qs.page = 1;
+							if (limit && limit > 0) {
+								qs.page_size = limit;
+								// Don't send page=1 explicitly, API might handle first page automatically
+							}
 
 							const pageResponse = await clairaApiRequest.call(
 								this,
@@ -261,7 +371,57 @@ export class Claira implements INodeType {
 								qs,
 							);
 
-							responseData = (pageResponse.deals as IDataObject[]) || [];
+							// Log the raw response for debugging
+							if (this.logger) {
+								this.logger.debug('[Deals GetAll] Raw response:', {
+									isArray: Array.isArray(pageResponse),
+									type: typeof pageResponse,
+									keys: typeof pageResponse === 'object' && pageResponse !== null ? Object.keys(pageResponse) : 'N/A',
+									fullResponse: JSON.stringify(pageResponse, null, 2),
+								});
+							}
+
+							// Handle different response structures
+							if (Array.isArray(pageResponse)) {
+								responseData = pageResponse.length > 0 ? pageResponse : undefined;
+							} else if (pageResponse && typeof pageResponse === 'object') {
+								// Check for 'deals' key
+								if ('deals' in pageResponse) {
+									const deals = pageResponse.deals;
+									if (Array.isArray(deals) && deals.length > 0) {
+										responseData = deals as IDataObject[];
+									} else {
+										responseData = undefined;
+									}
+								}
+								// Check for 'data' key
+								else if ('data' in pageResponse) {
+									const data = pageResponse.data;
+									if (data && typeof data === 'object') {
+										if ('deals' in data && Array.isArray(data.deals) && data.deals.length > 0) {
+											responseData = data.deals as IDataObject[];
+										} else if (Array.isArray(data) && data.length > 0) {
+											responseData = data as IDataObject[];
+										} else {
+											responseData = undefined;
+										}
+									} else {
+										responseData = undefined;
+									}
+								}
+								// If it's an empty object or doesn't match expected structure
+								else if (Object.keys(pageResponse).length === 0) {
+									responseData = undefined;
+								}
+								// If response has other keys, try to find array values
+								else {
+									const values = Object.values(pageResponse);
+									const arrayValue = values.find((v) => Array.isArray(v) && v.length > 0);
+									responseData = arrayValue ? (arrayValue as IDataObject[]) : undefined;
+								}
+							} else {
+								responseData = undefined;
+							}
 						} else {
 							// For returnAll, fetch all pages
 							qs.page_size = 100;
@@ -281,15 +441,53 @@ export class Claira implements INodeType {
 									qs,
 								);
 
-								if (pageResponse.deals && Array.isArray(pageResponse.deals)) {
-									allDeals.push(...pageResponse.deals);
+								let deals: IDataObject[] = [];
+								
+								// Handle different response structures
+								if (Array.isArray(pageResponse)) {
+									deals = pageResponse.length > 0 ? pageResponse : [];
+								} else if (pageResponse && typeof pageResponse === 'object') {
+									// Check for 'deals' key
+									if ('deals' in pageResponse) {
+										const dealsArray = pageResponse.deals;
+										if (Array.isArray(dealsArray)) {
+											deals = dealsArray as IDataObject[];
+										}
+									}
+									// Check for 'data' key
+									else if ('data' in pageResponse) {
+										const data = pageResponse.data;
+										if (data && typeof data === 'object') {
+											if ('deals' in data && Array.isArray(data.deals)) {
+												deals = data.deals as IDataObject[];
+											} else if (Array.isArray(data)) {
+												deals = data as IDataObject[];
+											}
+										}
+									}
+									// If response has other keys, try to find array values
+									else {
+										const values = Object.values(pageResponse);
+										const arrayValue = values.find((v) => Array.isArray(v));
+										if (arrayValue) {
+											deals = arrayValue as IDataObject[];
+										}
+									}
+								}
+
+								if (deals.length > 0) {
+									allDeals.push(...deals);
 
 									// Check if there are more pages
-									const totalCount = (pageResponse.count as number) || 0;
-									const pageSize = ((pageResponse.page_size as number) || (qs.page_size as number) || 100) as number;
+									const totalCount = (pageResponse.count as number) || 
+										((pageResponse.data as IDataObject)?.count as number) || 
+										allDeals.length;
+									const pageSize = ((pageResponse.page_size as number) || 
+										((pageResponse.data as IDataObject)?.page_size as number) || 
+										(qs.page_size as number) || 100) as number;
 									const totalPages = Math.ceil(totalCount / pageSize);
 
-									if (currentPage < totalPages) {
+									if (currentPage < totalPages && deals.length === pageSize) {
 										currentPage++;
 									} else {
 										hasMore = false;
@@ -468,8 +666,12 @@ export class Claira implements INodeType {
 
 				if (responseData !== undefined) {
 					if (Array.isArray(responseData)) {
-						returnData.push(...responseData);
-					} else {
+						if (responseData.length > 0) {
+							returnData.push(...responseData);
+						}
+					} else if (responseData !== null && typeof responseData === 'object' && Object.keys(responseData).length > 0) {
+						returnData.push(responseData);
+					} else if (responseData !== null && typeof responseData !== 'object') {
 						returnData.push(responseData);
 					}
 				}
