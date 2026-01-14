@@ -625,16 +625,19 @@ export class Claira implements INodeType {
 						const public_ = this.getNodeParameter('public', i, true) as boolean;
 						const isDefault = this.getNodeParameter('isDefault', i, false) as boolean;
 
-						// First, get all templates and find the one we need
+						// Get all templates and filter locally by ID
 						const templates = await clairaApiRequest.call(
 							this,
 							'GET',
 							'/credit_analysis/dashboard-templates/',
 						);
 						
+						// Extract templates list from response
 						const templatesList: IDataObject[] = Array.isArray(templates)
 							? (templates as IDataObject[])
 							: ((templates as IDataObject).data as IDataObject[]) || [];
+						
+						// Find template by ID
 						const template = templatesList.find(
 							(t: IDataObject) => t.id === templateId,
 						) as IDataObject | undefined;
@@ -655,12 +658,70 @@ export class Claira implements INodeType {
 							is_default: isDefault,
 						};
 
-						responseData = await clairaApiRequest.call(
+						const dashboardResponse = await clairaApiRequest.call(
 							this,
 							'POST',
 							'/credit_analysis/dashboards/',
 							dashboardBody,
-						);
+						) as IDataObject;
+
+						// Get dashboard from response (might be wrapped in 'data')
+						const dashboard = (dashboardResponse.data as IDataObject) || dashboardResponse;
+
+						// Get dashboard ID from response
+						const dashboardId = dashboard.id || dashboard.dashboard_id;
+						if (!dashboardId) {
+							throw new NodeOperationError(
+								this.getNode(),
+								'Failed to get dashboard ID from response',
+								{ itemIndex: i },
+							);
+						}
+
+						// Create sections from template
+						// Sections are nested in template.value.sections
+						const templateValue = template.value as IDataObject;
+						const templateSections = (templateValue?.sections as IDataObject[]) || [];
+						if (Array.isArray(templateSections) && templateSections.length > 0) {
+							for (let index = 0; index < templateSections.length; index++) {
+								const sectionTemplate = templateSections[index];
+								// Create section based on template structure
+								// Copy the template section and set dashboard_id
+								const sectionBody: IDataObject = {
+									...sectionTemplate,
+									dashboard_id: dashboardId,
+									position: sectionTemplate.position !== undefined ? sectionTemplate.position : index + 1,
+									value: sectionTemplate.value !== undefined ? sectionTemplate.value : {},
+								};
+
+								// Remove template-specific fields that shouldn't be sent
+								delete sectionBody.id;
+								delete sectionBody.template_id;
+								delete sectionBody.last_modified_by;
+								delete sectionBody.last_modified_at;
+
+								// Handle context_settings - flatten if it exists
+								if (sectionBody.context_settings) {
+									const contextSettings = sectionBody.context_settings as IDataObject;
+									sectionBody.use_documents = contextSettings.use_documents;
+									sectionBody.use_spreadsheets = contextSettings.use_spreadsheets;
+									sectionBody.use_sections = contextSettings.use_sections;
+									sectionBody.document_ids = contextSettings.document_ids;
+									sectionBody.start_date = contextSettings.start_date;
+									sectionBody.end_date = contextSettings.end_date;
+									delete sectionBody.context_settings;
+								}
+
+								await clairaApiRequest.call(
+									this,
+									'POST',
+									'/credit_analysis/dashboard-sections/',
+									sectionBody,
+								);
+							}
+						}
+
+						responseData = dashboard;
 					}
 				}
 
