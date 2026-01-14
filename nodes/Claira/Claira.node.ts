@@ -7,7 +7,6 @@ import {
 	type INodeType,
 	type INodeTypeDescription,
 } from 'n8n-workflow';
-import FormData from 'form-data';
 import {
 	getBaseUrls,
 	ensureAuthenticated,
@@ -174,7 +173,7 @@ export class Claira implements INodeType {
 						// Verify binary data is accessible
 						try {
 							this.helpers.assertBinaryData(i, binaryPropertyName);
-						} catch (error) {
+						} catch {
 							const availableBinaryProperties = item.binary ? Object.keys(item.binary).join(', ') : 'none';
 							throw new NodeOperationError(
 								this.getNode(),
@@ -191,16 +190,28 @@ export class Claira implements INodeType {
 					const binaryData = item.binary[binaryPropertyName];
 					const binaryBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
 					
-					// Build multipart form data using FormData (equivalent to setting parameter type = "n8n binary file" in HTTP Request node UI)
-					const formData = new FormData();
-					formData.append('file', binaryBuffer, {
-						filename: binaryData.fileName || 'file',
-						contentType: binaryData.mimeType || 'application/octet-stream',
-					});
+					// Manually construct multipart/form-data body (no external deps)
+					const boundary = '----n8nFormBoundary' + Date.now().toString(36) + Math.random().toString(36).substring(2);
+					const parts: Buffer[] = [];
+					
+					// Add file field
+					const fileName = binaryData.fileName || 'file';
+					const mimeType = binaryData.mimeType || 'application/octet-stream';
+					parts.push(Buffer.from(
+						`--${boundary}\r\n` +
+						`Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
+						`Content-Type: ${mimeType}\r\n\r\n`
+					));
+					parts.push(binaryBuffer);
+					parts.push(Buffer.from('\r\n'));
 
 					// Add other fields
 					if (folderId) {
-						formData.append('folder_id', folderId);
+						parts.push(Buffer.from(
+							`--${boundary}\r\n` +
+							`Content-Disposition: form-data; name="folder_id"\r\n\r\n` +
+							`${folderId}\r\n`
+						));
 					}
 					if (financialTypeIds) {
 						try {
@@ -208,7 +219,11 @@ export class Claira implements INodeType {
 								typeof financialTypeIds === 'string'
 									? JSON.parse(financialTypeIds)
 									: financialTypeIds;
-							formData.append('financial_type_ids', JSON.stringify(parsedIds));
+							parts.push(Buffer.from(
+								`--${boundary}\r\n` +
+								`Content-Disposition: form-data; name="financial_type_ids"\r\n\r\n` +
+								`${JSON.stringify(parsedIds)}\r\n`
+							));
 						} catch {
 							throw new NodeOperationError(
 								this.getNode(),
@@ -220,7 +235,11 @@ export class Claira implements INodeType {
 						try {
 							const parsedMetadata =
 								typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
-							formData.append('metadata', JSON.stringify(parsedMetadata));
+							parts.push(Buffer.from(
+								`--${boundary}\r\n` +
+								`Content-Disposition: form-data; name="metadata"\r\n\r\n` +
+								`${JSON.stringify(parsedMetadata)}\r\n`
+							));
 						} catch {
 							throw new NodeOperationError(
 								this.getNode(),
@@ -228,17 +247,20 @@ export class Claira implements INodeType {
 							);
 						}
 					}
+					
+					// End boundary
+					parts.push(Buffer.from(`--${boundary}--\r\n`));
+					const body = Buffer.concat(parts);
 						
 					const requestOptions: IHttpRequestOptions = {
 						method: 'POST',
 						url: `${docAnalysisUrl}${endpoint}`,
 						headers: {
 							Authorization: `Bearer ${accessToken}`,
-							// Don't set Content-Type - FormData will set it to multipart/form-data with boundary
-							...formData.getHeaders(),
+							'Content-Type': `multipart/form-data; boundary=${boundary}`,
+							'Content-Length': body.length.toString(),
 						},
-						body: formData,
-						// Explicitly don't use JSON encoding since we're sending multipart/form-data
+						body,
 						json: false,
 					};
 
@@ -273,7 +295,7 @@ export class Claira implements INodeType {
 								responseData = await this.helpers.httpRequest(requestOptions);
 							} else {
 								// Extract error details from axios error response
-								const axiosError = error as any;
+								const axiosError = error as { response?: { status?: number; data?: IDataObject }; statusCode?: number; code?: string; message?: string };
 								const statusCode = axiosError.response?.status || axiosError.statusCode || axiosError.code;
 								const errorResponse = axiosError.response?.data;
 								
@@ -282,13 +304,12 @@ export class Claira implements INodeType {
 								if (errorResponse) {
 									// Try different common Flask error formats
 									errorMessage =
-										errorResponse.message ||
-										errorResponse.error ||
-										errorResponse.detail ||
-										errorResponse.description ||
-										errorResponse.msg ||
-										errorResponse.file?.[0] || // Field-specific errors
-										errorResponse.file || // Direct field error
+										(errorResponse.message as string) ||
+										(errorResponse.error as string) ||
+										(errorResponse.detail as string) ||
+										(errorResponse.description as string) ||
+										(errorResponse.msg as string) ||
+										(Array.isArray(errorResponse.file) ? errorResponse.file[0] : errorResponse.file) as string || // Field-specific errors
 										(typeof errorResponse === 'string' ? errorResponse : null) ||
 										JSON.stringify(errorResponse);
 								} else if (axiosError.message) {
