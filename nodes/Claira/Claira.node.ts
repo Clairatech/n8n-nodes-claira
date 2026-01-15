@@ -87,6 +87,19 @@ export class Claira implements INodeType {
 				],
 				default: 'documents',
 			},
+			{
+				displayName: 'Client ID',
+				name: 'clientId',
+				type: 'string',
+				required: true,
+				default: '',
+				description: 'The client ID for API requests',
+				displayOptions: {
+					hide: {
+						resource: ['auth'],
+					},
+				},
+			},
 			...authDescription,
 			...documentDescription,
 			...dealDescription,
@@ -101,6 +114,7 @@ export class Claira implements INodeType {
 		const returnData: IDataObject[] = [];
 		const resource = this.getNodeParameter('resource', 0) as string;
 		const operation = this.getNodeParameter('operation', 0) as string;
+		const clientId = resource !== 'auth' ? this.getNodeParameter('clientId', 0) as string : '';
 
 		for (let i = 0; i < items.length; i++) {
 			try {
@@ -127,6 +141,7 @@ export class Claira implements INodeType {
 							this,
 							'GET',
 							`/${modelType}/docs/`,
+							clientId,
 							undefined,
 							qs,
 						);
@@ -141,6 +156,7 @@ export class Claira implements INodeType {
 							this,
 							'GET',
 							`/${modelType}/docs/${docId}/`,
+							clientId,
 						);
 					} else if (operation === 'upload') {
 						const modelType = this.getNodeParameter('modelType', i) as string;
@@ -185,6 +201,7 @@ export class Claira implements INodeType {
 					// Use httpRequest directly for multipart/form-data
 					const { docAnalysisUrl } = await getBaseUrls.call(this);
 					const accessToken = await ensureAuthenticated.call(this);
+					const uploadUrl = `${docAnalysisUrl}/clients/${clientId}${endpoint}`;
 
 					// Get binary data buffer and metadata
 					const binaryData = item.binary[binaryPropertyName];
@@ -254,7 +271,7 @@ export class Claira implements INodeType {
 						
 					const requestOptions: IHttpRequestOptions = {
 						method: 'POST',
-						url: `${docAnalysisUrl}${endpoint}`,
+						url: uploadUrl,
 						headers: {
 							Authorization: `Bearer ${accessToken}`,
 							'Content-Type': `multipart/form-data; boundary=${boundary}`,
@@ -267,7 +284,7 @@ export class Claira implements INodeType {
 					// Log request details for debugging
 					if (this.logger) {
 						this.logger.debug('Upload request', {
-							url: `${docAnalysisUrl}${endpoint}`,
+							url: uploadUrl,
 							hasFile: true,
 							fileName: binaryData.fileName,
 							mimeType: binaryData.mimeType,
@@ -327,7 +344,7 @@ export class Claira implements INodeType {
 										fileName: binaryData.fileName,
 										mimeType: binaryData.mimeType,
 										endpoint,
-										url: `${docAnalysisUrl}${endpoint}`,
+										url: uploadUrl,
 									});
 								}
 								
@@ -350,6 +367,7 @@ export class Claira implements INodeType {
 							this,
 							'DELETE',
 							`/${modelType}/docs/${docId}/`,
+							clientId,
 						);
 					}
 				} else if (resource === 'deals') {
@@ -388,6 +406,7 @@ export class Claira implements INodeType {
 								this,
 								'GET',
 								'/credit_analysis/deals/',
+								clientId,
 								undefined,
 								qs,
 							);
@@ -458,6 +477,7 @@ export class Claira implements INodeType {
 									this,
 									'GET',
 									'/credit_analysis/deals/',
+									clientId,
 									undefined,
 									qs,
 								);
@@ -531,6 +551,7 @@ export class Claira implements INodeType {
 							this,
 							'GET',
 							`/credit_analysis/deals/${dealId}/`,
+							clientId,
 						);
 					} else if (operation === 'create') {
 						const assetId = this.getNodeParameter('assetId', i) as string;
@@ -558,6 +579,7 @@ export class Claira implements INodeType {
 							this,
 							'POST',
 							'/credit_analysis/deals/',
+							clientId,
 							body,
 						);
 					}
@@ -577,6 +599,7 @@ export class Claira implements INodeType {
 							this,
 							'GET',
 							`/${modelType}/folders/`,
+							clientId,
 							undefined,
 							qs,
 						);
@@ -590,6 +613,7 @@ export class Claira implements INodeType {
 							this,
 							'GET',
 							`/${modelType}/folders/tree/`,
+							clientId,
 						);
 					} else if (operation === 'create') {
 						const modelType = this.getNodeParameter('modelType', i) as string;
@@ -608,6 +632,7 @@ export class Claira implements INodeType {
 							this,
 							'POST',
 							`/${modelType}/folders/`,
+							clientId,
 							body,
 						);
 					}
@@ -618,6 +643,7 @@ export class Claira implements INodeType {
 							this,
 							'GET',
 							`/credit_analysis/docs/${docId}/fin_data_items/`,
+							clientId,
 						);
 					} else if (operation === 'getTables') {
 						const docId = this.getNodeParameter('docId', i) as string;
@@ -625,6 +651,7 @@ export class Claira implements INodeType {
 							this,
 							'GET',
 							`/credit_analysis/docs/${docId}/fin_data_tables/`,
+							clientId,
 						);
 					}
 				} else if (resource === 'dashboardTemplates') {
@@ -633,6 +660,7 @@ export class Claira implements INodeType {
 							this,
 							'GET',
 							'/credit_analysis/dashboard-templates/',
+							clientId,
 						);
 						if (Array.isArray(responseData)) {
 							// responseData is already an array
@@ -651,6 +679,7 @@ export class Claira implements INodeType {
 							this,
 							'GET',
 							'/credit_analysis/dashboard-templates/',
+							clientId,
 						);
 						
 						// Extract templates list from response
@@ -683,6 +712,7 @@ export class Claira implements INodeType {
 							this,
 							'POST',
 							'/credit_analysis/dashboards/',
+							clientId,
 							dashboardBody,
 						) as IDataObject;
 
@@ -737,6 +767,7 @@ export class Claira implements INodeType {
 									this,
 									'POST',
 									'/credit_analysis/dashboard-sections/',
+									clientId,
 									sectionBody,
 								);
 							}

@@ -106,6 +106,7 @@ export async function clairaApiRequest(
 	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
 	method: IHttpRequestMethods,
 	endpoint: string,
+	clientId: string,
 	body?: IDataObject,
 	qs?: IDataObject,
 	headers?: IDataObject,
@@ -125,9 +126,11 @@ export async function clairaApiRequest(
 		});
 	}
 
+	const fullUrl = `${docAnalysisUrl}/clients/${clientId}${endpoint}`;
+
 	const requestOptions: IHttpRequestOptions = {
 		method,
-		url: `${docAnalysisUrl}${endpoint}`,
+		url: fullUrl,
 		headers: {
 			Authorization: `Bearer ${accessToken}`,
 			Accept: 'application/json',
@@ -144,7 +147,7 @@ export async function clairaApiRequest(
 		if ('logger' in this && this.logger) {
 			this.logger.debug('[Claira API Request]', {
 				method,
-				url: `${docAnalysisUrl}${endpoint}`,
+				url: fullUrl,
 				queryParams: cleanQs,
 				hasBody: !!body,
 				requestOptions: JSON.stringify(requestOptions, null, 2),
@@ -169,7 +172,7 @@ export async function clairaApiRequest(
 			const errorDetails: IDataObject = {
 				method,
 				endpoint,
-				url: `${docAnalysisUrl}${endpoint}`,
+				url: fullUrl,
 				queryParams: cleanQs,
 				hasBody: !!body,
 			};
