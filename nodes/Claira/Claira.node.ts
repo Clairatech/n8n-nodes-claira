@@ -938,7 +938,7 @@ export class Claira implements INodeType {
 						);
 
 						// Extract reports (dashboards) from response
-						let reports = (reportsResponse.data as IDataObject[]) || reportsResponse;
+						const reports = (reportsResponse.data as IDataObject[]) || reportsResponse;
 
 						// If includeSections is true, fetch sections for each report
 						if (includeSections && Array.isArray(reports)) {

@@ -50,7 +50,7 @@ export const dealGetActivitiesDescription: INodeProperties[] = [
 			show: showOnlyForDealGetActivities,
 		},
 		default: false,
-		description: 'Whether to return all results or only up to the limit',
+		description: 'Whether to return all results or only up to a given limit',
 	},
 	{
 		displayName: 'Limit',
@@ -66,7 +66,7 @@ export const dealGetActivitiesDescription: INodeProperties[] = [
 			minValue: 1,
 			maxValue: 100,
 		},
-		default: 10,
-		description: 'Max number of activities to return',
+		default: 50,
+		description: 'Max number of results to return',
 	},
 ];
