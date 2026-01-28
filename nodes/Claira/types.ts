@@ -104,18 +104,22 @@ export const ENVIRONMENT_URLS = {
 	platform: {
 		auth: 'https://auth.platform.claira.io',
 		docAnalysis: 'https://da.platform.claira.io/v2',
+		modulesManager: 'https://mm.platform.claira.io/v1',
 	},
 	stable: {
 		auth: 'https://claira-auth.stable.aws.claira.io',
 		docAnalysis: 'https://claira-doc-analysis.stable.aws.claira.io/v2',
+		modulesManager: 'https://claira-modules-manager.stable.aws.claira.io/v1',
 	},
 	dev: {
 		auth: 'https://claira-auth.dev.aws.claira.io',
 		docAnalysis: 'https://claira-doc-analysis.dev.aws.claira.io/v2',
+		modulesManager: 'https://claira-modules-manager.dev.aws.claira.io/v1',
 	},
 	local: {
 		auth: 'http://localhost:4999',
 		docAnalysis: 'http://localhost:4998/v2',
+		modulesManager: 'http://localhost:5000/v1',
 	},
 };
 

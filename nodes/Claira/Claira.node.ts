@@ -12,13 +12,28 @@ import {
 	ensureAuthenticated,
 	clairaApiRequest,
 	clairaAuthRequest,
+	clairaModulesManagerRequest,
+	clairaSuperAdminRequest,
 } from './shared/transport';
+import {
+	formatDealsToMarkdown,
+	formatDealToMarkdown,
+	formatCreatedDealToMarkdown,
+	formatDealStatusToMarkdown,
+	formatSetStatusToMarkdown,
+	formatStatusOptionsToMarkdown,
+	formatActivitiesToMarkdown,
+	formatCreatedActivityToMarkdown,
+	formatReportsToMarkdown,
+	formatReportSectionsToMarkdown,
+} from './shared/formatters';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
 import { dealDescription } from './resources/deals';
 import { folderDescription } from './resources/folders';
 import { financialDataDescription } from './resources/financialData';
 import { dashboardTemplateDescription } from './resources/dashboardTemplates';
+import { superAdminDescription } from './resources/superAdmin';
 
 export class Claira implements INodeType {
 	description: INodeTypeDescription = {
@@ -48,64 +63,70 @@ export class Claira implements INodeType {
 			},
 		},
 		properties: [
-			{
-				displayName: 'Resource',
-				name: 'resource',
-				type: 'options',
-				noDataExpression: true,
-				options: [
-					{
-						name: 'Auth',
-						value: 'auth',
-						description: 'Authentication operations',
-					},
-					{
-						name: 'Deal',
-						value: 'deals',
-						description: 'Deal operations (Credit Analysis)',
-					},
-					{
-						name: 'Document',
-						value: 'documents',
-						description: 'Document operations',
-					},
-					{
-						name: 'Financial Data',
-						value: 'financialData',
-						description: 'Financial data operations',
-					},
-					{
-						name: 'Folder',
-						value: 'folders',
-						description: 'Folder operations',
-					},
-					{
-						name: 'Report Agent',
-						value: 'dashboardTemplates',
-						description: 'Report Agent operations',
-					},
-				],
-				default: 'documents',
-			},
-			{
-				displayName: 'Client ID',
-				name: 'clientId',
-				type: 'string',
-				required: true,
-				default: '',
-				description: 'The client ID for API requests',
-				displayOptions: {
-					hide: {
-						resource: ['auth'],
+				{
+					displayName: 'Resource',
+					name: 'resource',
+					type: 'options',
+					noDataExpression: true,
+					options: [
+						{
+							name: 'Auth',
+							value: 'auth',
+							description: 'Authentication operations',
+						},
+						{
+							name: 'Deal',
+							value: 'deals',
+							description: 'Deal operations (Credit Analysis)',
+						},
+						{
+							name: 'Document',
+							value: 'documents',
+							description: 'Document operations',
+						},
+						{
+							name: 'Financial Data',
+							value: 'financialData',
+							description: 'Financial data operations',
+						},
+						{
+							name: 'Folder',
+							value: 'folders',
+							description: 'Folder operations',
+						},
+						{
+							name: 'Report Agent',
+							value: 'dashboardTemplates',
+							description: 'Report Agent operations',
+						},
+						{
+							name: 'Super Admin',
+							value: 'superAdmin',
+							description: 'Super admin operations (clients, users)',
+						},
+					],
+					default: 'documents',
+				},
+				{
+					displayName: 'Client ID',
+					name: 'clientId',
+					type: 'string',
+					required: true,
+					default: '',
+					description: 'The client ID for API requests',
+					displayOptions: {
+						hide: {
+							resource: ['auth', 'superAdmin'],
+						},
 					},
 				},
-			},
 			...authDescription,
 			...documentDescription,
 			...dealDescription,
 			...folderDescription,
 			...financialDataDescription,
 			...dashboardTemplateDescription,
+			...superAdminDescription,
 		],
 	};
 
@@ -114,7 +135,7 @@ export class Claira implements INodeType {
 		const returnData: IDataObject[] = [];
 		const resource = this.getNodeParameter('resource', 0) as string;
 		const operation = this.getNodeParameter('operation', 0) as string;
-		const clientId = resource !== 'auth' ? this.getNodeParameter('clientId', 0) as string : '';
+		const clientId = (resource !== 'auth' && resource !== 'superAdmin') ? this.getNodeParameter('clientId', 0) as string : '';
 
 		for (let i = 0; i < items.length; i++) {
 			try {
@@ -371,6 +392,8 @@ export class Claira implements INodeType {
 						);
 					}
 				} else if (resource === 'deals') {
+					const outputFormat = this.getNodeParameter('outputFormat', i, 'json') as string;
+
 					if (operation === 'getAll') {
 						const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
 						const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
@@ -582,6 +605,416 @@ export class Claira implements INodeType {
 							clientId,
 							body,
 						);
+					} else if (operation === 'getStatus') {
+						const dealId = this.getNodeParameter('dealId', i) as string;
+						const dealResponse = await clairaApiRequest.call(
+							this,
+							'GET',
+							`/credit_analysis/deals/${dealId}/`,
+							clientId,
+						);
+
+						// Log full response for debugging
+						if (this.logger) {
+							this.logger.debug('[Get Status] Full response:', {
+								responseKeys: Object.keys(dealResponse),
+								fullResponse: JSON.stringify(dealResponse).substring(0, 1000),
+							});
+						}
+
+						// Response structure: { data: { id, asset_id, data: { status, ... }, ... } }
+						const deal = (dealResponse.data as IDataObject) || dealResponse;
+						const dealDataField = (deal.data as IDataObject) || {};
+						const status = dealDataField.status || null;
+
+						responseData = {
+							deal_id: dealId,
+							status,
+						};
+					} else if (operation === 'setStatus') {
+						const dealId = this.getNodeParameter('dealId', i) as string;
+						const status = this.getNodeParameter('status', i) as string;
+						const moduleVersion = this.getNodeParameter('moduleVersion', i, 'latest') as string;
+
+						// First get the existing deal to preserve other data fields
+						const existingDealResponse = await clairaApiRequest.call(
+							this,
+							'GET',
+							`/credit_analysis/deals/${dealId}/`,
+							clientId,
+						);
+
+						// Response structure: { data: { id, asset_id, data: { status, ... }, ... } }
+						const existingDeal = (existingDealResponse.data as IDataObject) || existingDealResponse;
+						const existingDataField = (existingDeal.data as IDataObject) || {};
+
+						// Merge status into existing data field
+						const body: IDataObject = {
+							data: {
+								...existingDataField,
+								status,
+							},
+						};
+
+						const updateResponse = await clairaApiRequest.call(
+							this,
+							'PATCH',
+							`/credit_analysis/deals/${dealId}/`,
+							clientId,
+							body,
+						);
+
+						// Check if we need to create reports from templates for this status
+						const createdReports: IDataObject[] = [];
+						try {
+							// Fetch module config to get deal_report_rules
+							const moduleConfig = await clairaModulesManagerRequest.call(
+								this,
+								'GET',
+								`/modules/credit_analysis/configs/${moduleVersion}/`,
+								clientId,
+							);
+
+							// Extract deal_report_rules from titles.ent_ids.deal_report_rules
+							const titles = (moduleConfig.titles as IDataObject) || {};
+							const entIds = (titles.ent_ids as IDataObject) || {};
+							const dealReportRules = (entIds.deal_report_rules as IDataObject) || {};
+							const statusRules = (dealReportRules[status] as IDataObject) || {};
+							const createReportsFromTemplates = (statusRules.createReportsFromTemplates as string[]) || [];
+
+							if (createReportsFromTemplates.length > 0) {
+								// Get all templates
+								const templates = await clairaApiRequest.call(
+									this,
+									'GET',
+									'/credit_analysis/dashboard-templates/',
+									clientId,
+								);
+
+								const templatesList: IDataObject[] = Array.isArray(templates)
+									? (templates as IDataObject[])
+									: ((templates as IDataObject).data as IDataObject[]) || [];
+
+								// Create reports from each template (by name)
+								for (const templateName of createReportsFromTemplates) {
+									const template = templatesList.find(
+										(t: IDataObject) => t.title === templateName,
+									) as IDataObject | undefined;
+
+									if (!template) {
+										if (this.logger) {
+											this.logger.warn(`[setStatus] Report Agent "${templateName}" not found, skipping`);
+										}
+										continue;
+									}
+
+									// Create dashboard from template
+									const dashboardBody: IDataObject = {
+										deal_id: dealId,
+										title: (template.title as string) || 'Report',
+										public: true,
+										is_default: false,
+									};
+
+									const dashboardResponse = await clairaApiRequest.call(
+										this,
+										'POST',
+										'/credit_analysis/dashboards/',
+										clientId,
+										dashboardBody,
+									) as IDataObject;
+
+									const dashboard = (dashboardResponse.data as IDataObject) || dashboardResponse;
+									const dashboardId = dashboard.id || dashboard.dashboard_id;
+
+									if (dashboardId) {
+										// Create sections from template
+										const templateValue = template.value as IDataObject;
+										const templateSections = (templateValue?.sections as IDataObject[]) || [];
+										if (Array.isArray(templateSections) && templateSections.length > 0) {
+											for (let index = 0; index < templateSections.length; index++) {
+												const sectionTemplate = templateSections[index];
+												const sectionBody: IDataObject = {
+													...sectionTemplate,
+													dashboard_id: dashboardId,
+													position: sectionTemplate.position !== undefined ? sectionTemplate.position : index + 1,
+													value: sectionTemplate.value !== undefined ? sectionTemplate.value : {},
+												};
+
+												delete sectionBody.id;
+												delete sectionBody.template_id;
+												delete sectionBody.last_modified_by;
+												delete sectionBody.last_modified_at;
+
+												if (sectionBody.context_settings) {
+													const contextSettings = sectionBody.context_settings as IDataObject;
+													sectionBody.use_documents = contextSettings.use_documents;
+													sectionBody.use_spreadsheets = contextSettings.use_spreadsheets;
+													sectionBody.use_sections = contextSettings.use_sections;
+													sectionBody.document_ids = contextSettings.document_ids;
+													sectionBody.start_date = contextSettings.start_date;
+													sectionBody.end_date = contextSettings.end_date;
+													delete sectionBody.context_settings;
+												}
+
+												await clairaApiRequest.call(
+													this,
+													'POST',
+													'/credit_analysis/dashboard-sections/',
+													clientId,
+													sectionBody,
+												);
+											}
+										}
+
+										createdReports.push({
+											template_id: template.id,
+											template_name: templateName,
+											dashboard_id: dashboardId,
+											title: dashboard.title,
+										});
+									}
+								}
+							}
+						} catch (error) {
+							// Log but don't fail if report creation fails
+							if (this.logger) {
+								this.logger.warn('[setStatus] Failed to create reports from templates', {
+									error: error instanceof Error ? error.message : String(error),
+								});
+							}
+						}
+
+						responseData = {
+							...(updateResponse as IDataObject),
+							created_reports: createdReports,
+						};
+					} else if (operation === 'getStatusOptions') {
+						const moduleVersion = this.getNodeParameter('moduleVersion', i, 'latest') as string;
+
+						// Fetch module config from modules manager
+						const moduleConfig = await clairaModulesManagerRequest.call(
+							this,
+							'GET',
+							`/modules/credit_analysis/configs/${moduleVersion}/`,
+							clientId,
+						);
+
+						// Log response for debugging
+						if (this.logger) {
+							this.logger.debug('[Get Status Options] Module config keys:', {
+								keys: Object.keys(moduleConfig),
+								dashboards: JSON.stringify(moduleConfig.dashboards).substring(0, 500),
+							});
+						}
+
+						// Extract status options from dashboards.deals.columns['data.status'].tags
+						// API returns 'dashboards' not 'dashboards_config'
+						const dashboards = (moduleConfig.dashboards as IDataObject) || {};
+						const dealsConfig = (dashboards.deals as IDataObject) || {};
+						const columnsConfig = (dealsConfig.columns as IDataObject) || {};
+						const statusColumnConfig = (columnsConfig['data.status'] as IDataObject) || {};
+						const tagsString = (statusColumnConfig.tags as string) || '';
+
+						// Parse comma-separated tags into array
+						const statusOptions = tagsString
+							.split('|')
+							.map((s: string) => s.trim())
+							.filter((s: string) => s !== '');
+
+						// Extract deal_report_rules from titles.ent_ids.deal_report_rules
+						const titles = (moduleConfig.titles as IDataObject) || {};
+						const entIds = (titles.ent_ids as IDataObject) || {};
+						const dealReportRules = (entIds.deal_report_rules as IDataObject) || {};
+
+						responseData = {
+							status_options: statusOptions,
+							deal_report_rules: dealReportRules,
+						};
+					} else if (operation === 'getActivities') {
+						const activityScope = this.getNodeParameter('activityScope', i, 'deal') as string;
+						const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
+						const qs: IDataObject = {
+							'created_at:desc': '', // Sort by newest first
+						};
+
+						if (!returnAll) {
+							const limit = this.getNodeParameter('limit', i, 10) as number;
+							qs.page_size = limit;
+							qs.page = 1;
+						}
+
+						let endpoint: string;
+						if (activityScope === 'all') {
+							// Get activities across all deals
+							endpoint = '/credit_analysis/deals/activities/';
+						} else {
+							// Get activities for a specific deal
+							const dealId = this.getNodeParameter('dealId', i) as string;
+							endpoint = `/credit_analysis/deals/${dealId}/activities/`;
+						}
+
+						const activitiesResponse = await clairaApiRequest.call(
+							this,
+							'GET',
+							endpoint,
+							clientId,
+							undefined,
+							qs,
+						);
+
+						// Extract activities from response
+						if (activitiesResponse && typeof activitiesResponse === 'object') {
+							if ('data' in activitiesResponse) {
+								const dataObj = activitiesResponse.data as IDataObject;
+								responseData = (dataObj.activities as IDataObject[]) || activitiesResponse;
+							} else if ('activities' in activitiesResponse) {
+								responseData = activitiesResponse.activities as IDataObject[];
+							} else {
+								responseData = activitiesResponse;
+							}
+						} else {
+							responseData = activitiesResponse;
+						}
+					} else if (operation === 'createActivity') {
+						const dealId = this.getNodeParameter('dealId', i) as string;
+						const title = this.getNodeParameter('title', i) as string;
+						const description = this.getNodeParameter('description', i, '') as string;
+						const additionalFields = this.getNodeParameter('additionalFields', i, {}) as IDataObject;
+
+						const body: IDataObject = {
+							title,
+						};
+
+						if (description) {
+							body.description = description;
+						}
+
+						// Handle additional fields
+						if (additionalFields.docIds) {
+							const docIdsStr = additionalFields.docIds as string;
+							body.doc_ids = docIdsStr.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+						}
+
+						if (additionalFields.dashboardIds) {
+							const dashboardIdsStr = additionalFields.dashboardIds as string;
+							body.deal_analysis_dashboard_ids = dashboardIdsStr.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+						}
+
+						if (additionalFields.sectionIds) {
+							const sectionIdsStr = additionalFields.sectionIds as string;
+							body.dashboard_section_ids = sectionIdsStr.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+						}
+
+						if (additionalFields.data) {
+							try {
+								body.data = typeof additionalFields.data === 'string' 
+									? JSON.parse(additionalFields.data) 
+									: additionalFields.data;
+							} catch {
+								body.data = {};
+							}
+						}
+
+						const activityResponse = await clairaApiRequest.call(
+							this,
+							'POST',
+							`/credit_analysis/deals/${dealId}/activities/`,
+							clientId,
+							body,
+						);
+
+						// Extract activity from response
+						responseData = ((activityResponse as IDataObject).data as IDataObject) || activityResponse;
+					} else if (operation === 'getReports') {
+						const dealId = this.getNodeParameter('dealId', i) as string;
+						const includeSections = this.getNodeParameter('includeSections', i, false) as boolean;
+
+						const reportsResponse = await clairaApiRequest.call(
+							this,
+							'GET',
+							`/credit_analysis/dashboards/${dealId}/`,
+							clientId,
+						);
+
+						// Extract reports (dashboards) from response
+						let reports = (reportsResponse.data as IDataObject[]) || reportsResponse;
+
+						// If includeSections is true, fetch sections for each report
+						if (includeSections && Array.isArray(reports)) {
+							for (const report of reports) {
+								const dashboardId = report.id as string;
+								if (dashboardId) {
+									try {
+										const sectionsResponse = await clairaApiRequest.call(
+											this,
+											'GET',
+											`/credit_analysis/dashboard-sections/${dashboardId}/`,
+											clientId,
+										);
+										report.sections = (sectionsResponse.data as IDataObject[]) || sectionsResponse;
+									} catch (error) {
+										// If sections fetch fails, continue without sections
+										if (this.logger) {
+											this.logger.warn(`Failed to fetch sections for dashboard ${dashboardId}`, {
+												error: error instanceof Error ? error.message : String(error),
+											});
+										}
+										report.sections = [];
+									}
+								}
+							}
+						}
+
+						responseData = reports;
+					} else if (operation === 'getReportSections') {
+						const reportId = this.getNodeParameter('reportId', i) as string;
+
+						const sectionsResponse = await clairaApiRequest.call(
+							this,
+							'GET',
+							`/credit_analysis/dashboard-sections/${reportId}/`,
+							clientId,
+						);
+
+						// Extract sections from response
+						responseData = (sectionsResponse.data as IDataObject[]) || sectionsResponse;
+					}
+
+					// Apply markdown formatting if requested
+					if (outputFormat === 'markdown' && responseData !== undefined) {
+						let markdownContent = '';
+
+						if (operation === 'getAll') {
+							const deals = Array.isArray(responseData) ? responseData : [responseData];
+							markdownContent = formatDealsToMarkdown(deals as IDataObject[]);
+						} else if (operation === 'get') {
+							markdownContent = formatDealToMarkdown(responseData as IDataObject);
+						} else if (operation === 'create') {
+							markdownContent = formatCreatedDealToMarkdown(responseData as IDataObject);
+						} else if (operation === 'getStatus') {
+							markdownContent = formatDealStatusToMarkdown(responseData as IDataObject);
+						} else if (operation === 'setStatus') {
+							markdownContent = formatSetStatusToMarkdown(responseData as IDataObject);
+						} else if (operation === 'getStatusOptions') {
+							markdownContent = formatStatusOptionsToMarkdown(responseData as IDataObject);
+						} else if (operation === 'getActivities') {
+							const activities = Array.isArray(responseData) ? responseData : [responseData];
+							markdownContent = formatActivitiesToMarkdown(activities as IDataObject[]);
+						} else if (operation === 'createActivity') {
+							markdownContent = formatCreatedActivityToMarkdown(responseData as IDataObject);
+						} else if (operation === 'getReports') {
+							const dealId = this.getNodeParameter('dealId', i) as string;
+							const reports = Array.isArray(responseData) ? responseData : [responseData];
+							markdownContent = formatReportsToMarkdown(reports as IDataObject[], dealId);
+						} else if (operation === 'getReportSections') {
+							const sections = Array.isArray(responseData) ? responseData : [responseData];
+							markdownContent = formatReportSectionsToMarkdown(sections as IDataObject[]);
+						}
+
+						if (markdownContent) {
+							responseData = { markdown: markdownContent };
+						}
 					}
 				} else if (resource === 'folders') {
 					if (operation === 'getAll') {
@@ -774,6 +1207,140 @@ export class Claira implements INodeType {
 						}
 
 						responseData = dashboard;
+					}
+				} else if (resource === 'superAdmin') {
+					if (operation === 'getClients') {
+						const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
+						const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
+						const qs: IDataObject = { ...filters };
+
+						if (!returnAll) {
+							const limit = this.getNodeParameter('limit', i, 50) as number;
+							qs.page_size = limit;
+							qs.page = 1;
+						}
+
+						if (returnAll) {
+							// Fetch all pages
+							qs.page_size = 100;
+							qs.page = 1;
+
+							const allClients: IDataObject[] = [];
+							let hasMore = true;
+							let currentPage = 1;
+
+							while (hasMore) {
+								qs.page = currentPage;
+								const pageResponse = await clairaSuperAdminRequest.call(
+									this,
+									'GET',
+									'/clients/',
+									undefined,
+									qs,
+								);
+
+								// Extract clients from response
+								const data = (pageResponse.data as IDataObject) || pageResponse;
+								const clients = (data.clients as IDataObject[]) || [];
+
+								if (clients.length > 0) {
+									allClients.push(...clients);
+									const pageSize = (data.page_size as number) || 100;
+									if (clients.length < pageSize) {
+										hasMore = false;
+									} else {
+										currentPage++;
+									}
+								} else {
+									hasMore = false;
+								}
+
+								// Safety check
+								if (currentPage > 1000) {
+									hasMore = false;
+								}
+							}
+
+							responseData = allClients;
+						} else {
+							const pageResponse = await clairaSuperAdminRequest.call(
+								this,
+								'GET',
+								'/clients/',
+								undefined,
+								qs,
+							);
+
+							// Extract clients from response
+							const data = (pageResponse.data as IDataObject) || pageResponse;
+							responseData = (data.clients as IDataObject[]) || [];
+						}
+					} else if (operation === 'getUsers') {
+						const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
+						const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
+						const qs: IDataObject = { ...filters };
+
+						if (!returnAll) {
+							const limit = this.getNodeParameter('limit', i, 50) as number;
+							qs.page_size = limit;
+							qs.page = 1;
+						}
+
+						if (returnAll) {
+							// Fetch all pages
+							qs.page_size = 100;
+							qs.page = 1;
+
+							const allUsers: IDataObject[] = [];
+							let hasMore = true;
+							let currentPage = 1;
+
+							while (hasMore) {
+								qs.page = currentPage;
+								const pageResponse = await clairaSuperAdminRequest.call(
+									this,
+									'GET',
+									'/users/',
+									undefined,
+									qs,
+								);
+
+								// Extract users from response
+								const data = (pageResponse.data as IDataObject) || pageResponse;
+								const users = (data.users as IDataObject[]) || [];
+
+								if (users.length > 0) {
+									allUsers.push(...users);
+									const pageSize = (data.page_size as number) || 100;
+									if (users.length < pageSize) {
+										hasMore = false;
+									} else {
+										currentPage++;
+									}
+								} else {
+									hasMore = false;
+								}
+
+								// Safety check
+								if (currentPage > 1000) {
+									hasMore = false;
+								}
+							}
+
+							responseData = allUsers;
+						} else {
+							const pageResponse = await clairaSuperAdminRequest.call(
+								this,
+								'GET',
+								'/users/',
+								undefined,
+								qs,
+							);
+
+							// Extract users from response
+							const data = (pageResponse.data as IDataObject) || pageResponse;
+							responseData = (data.users as IDataObject[]) || [];
+						}
 					}
 				}
 

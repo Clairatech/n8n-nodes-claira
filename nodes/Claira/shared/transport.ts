@@ -11,7 +11,7 @@ import { ENVIRONMENT_URLS, type IClairaCredentials, type ITokenResponse } from '
 
 export async function getBaseUrls(
 	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-): Promise<{ authUrl: string; docAnalysisUrl: string }> {
+): Promise<{ authUrl: string; docAnalysisUrl: string; modulesManagerUrl: string }> {
 	const credentials = (await this.getCredentials('clairaApi')) as IClairaCredentials;
 
 	const environment = credentials.environment || 'platform';
@@ -20,6 +20,7 @@ export async function getBaseUrls(
 	return {
 		authUrl: credentials.authBaseUrl || envConfig.auth,
 		docAnalysisUrl: credentials.docAnalysisBaseUrl || envConfig.docAnalysis,
+		modulesManagerUrl: envConfig.modulesManager,
 	};
 }
 
@@ -235,6 +236,162 @@ export async function clairaAuthRequest(
 	};
 
 	try {
+		return await this.helpers.httpRequest(requestOptions);
+	} catch (error) {
+		// If 401, try to refresh token and retry once
+		if (
+			error &&
+			typeof error === 'object' &&
+			'statusCode' in error &&
+			error.statusCode === 401
+		) {
+			// Retry with new token (ensureAuthenticated will handle login if needed)
+			const newAccessToken = await ensureAuthenticated.call(this);
+			requestOptions.headers = {
+				...requestOptions.headers,
+				Authorization: `Bearer ${newAccessToken}`,
+			};
+			return await this.helpers.httpRequest(requestOptions);
+		}
+		throw error;
+	}
+}
+
+export async function clairaSuperAdminRequest(
+	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
+	endpoint: string,
+	body?: IDataObject,
+	qs?: IDataObject,
+	headers?: IDataObject,
+): Promise<IDataObject> {
+	const { authUrl } = await getBaseUrls.call(this);
+	const accessToken = await ensureAuthenticated.call(this);
+
+	// Clean up query string - remove undefined, null, and empty string values
+	const cleanQs: IDataObject = {};
+	if (qs) {
+		Object.keys(qs).forEach((key) => {
+			const value = qs[key];
+			if (value !== undefined && value !== null && value !== '') {
+				cleanQs[key] = value;
+			}
+		});
+	}
+
+	const fullUrl = `${authUrl}/super_admin${endpoint}`;
+
+	const requestOptions: IHttpRequestOptions = {
+		method,
+		url: fullUrl,
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(headers || {}),
+		},
+		qs: Object.keys(cleanQs).length > 0 ? cleanQs : undefined,
+		body,
+		json: true,
+	};
+
+	try {
+		// Log request details
+		if ('logger' in this && this.logger) {
+			this.logger.debug('[Claira SuperAdmin Request]', {
+				method,
+				url: fullUrl,
+				queryParams: cleanQs,
+			});
+		}
+		const response = await this.helpers.httpRequest(requestOptions);
+		// Log response details
+		if ('logger' in this && this.logger) {
+			this.logger.debug('[Claira SuperAdmin Response]', {
+				method,
+				endpoint,
+				responseType: Array.isArray(response) ? 'array' : typeof response,
+				responseKeys: typeof response === 'object' && response !== null ? Object.keys(response) : 'N/A',
+				responsePreview: JSON.stringify(response).substring(0, 500),
+			});
+		}
+		return response;
+	} catch (error) {
+		// Log error details
+		if ('logger' in this && this.logger) {
+			const errorDetails: IDataObject = {
+				method,
+				endpoint,
+				url: fullUrl,
+				queryParams: cleanQs,
+			};
+			if (error && typeof error === 'object') {
+				if ('statusCode' in error) {
+					errorDetails.statusCode = error.statusCode;
+				}
+				if ('response' in error && error.response) {
+					errorDetails.responseData = error.response.data;
+				}
+				if ('message' in error) {
+					errorDetails.message = error.message;
+				}
+			}
+			this.logger.error('[Claira SuperAdmin Error]', errorDetails);
+		}
+		// If 401, try to refresh token and retry once
+		if (
+			error &&
+			typeof error === 'object' &&
+			'statusCode' in error &&
+			error.statusCode === 401
+		) {
+			const newAccessToken = await ensureAuthenticated.call(this);
+			requestOptions.headers = {
+				...requestOptions.headers,
+				Authorization: `Bearer ${newAccessToken}`,
+			};
+			return await this.helpers.httpRequest(requestOptions);
+		}
+		throw error;
+	}
+}
+
+export async function clairaModulesManagerRequest(
+	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
+	endpoint: string,
+	clientId: string,
+	body?: IDataObject,
+	qs?: IDataObject,
+	headers?: IDataObject,
+): Promise<IDataObject> {
+	const { modulesManagerUrl } = await getBaseUrls.call(this);
+	const accessToken = await ensureAuthenticated.call(this);
+
+	const fullUrl = `${modulesManagerUrl}/clients/${clientId}${endpoint}`;
+
+	const requestOptions: IHttpRequestOptions = {
+		method,
+		url: fullUrl,
+		headers: {
+			Authorization: `Bearer ${accessToken}`,
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(headers || {}),
+		},
+		qs,
+		body,
+		json: true,
+	};
+
+	try {
+		// Log request details
+		if ('logger' in this && this.logger) {
+			this.logger.debug('[Claira Modules Manager Request]', {
+				method,
+				url: fullUrl,
+			});
+		}
 		return await this.helpers.httpRequest(requestOptions);
 	} catch (error) {
 		// If 401, try to refresh token and retry once
