@@ -121,6 +121,8 @@ docker push us-central1-docker.pkg.dev/$PROJECT_ID/n8n/n8n-claira:latest
 # Deploy new image
 gcloud run deploy n8n-claira \
   --image us-central1-docker.pkg.dev/$PROJECT_ID/n8n/n8n-claira:latest \
+  --vpc-connector n8n-connector \
+  --vpc-egress all-traffic \
   --region us-central1
 ```
 

@@ -58,5 +58,8 @@
 				"public"
 			]
 		}
+	},
+	"dependencies": {
+		"@claira/n8n-nodes-claira": "^0.0.6"
 	}
 }
