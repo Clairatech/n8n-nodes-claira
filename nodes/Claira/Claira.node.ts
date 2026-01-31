@@ -1287,8 +1287,8 @@ export class Claira implements INodeType {
 						}
 
 						if (returnAll) {
-							// Fetch all pages
-							qs.page_size = 100;
+							// Fetch all pages (max page_size is 50 per API validation)
+							qs.page_size = 50;
 							qs.page = 1;
 
 							const allUsers: IDataObject[] = [];
@@ -1311,7 +1311,7 @@ export class Claira implements INodeType {
 
 								if (users.length > 0) {
 									allUsers.push(...users);
-									const pageSize = (data.page_size as number) || 100;
+									const pageSize = (data.page_size as number) || 50;
 									if (users.length < pageSize) {
 										hasMore = false;
 									} else {

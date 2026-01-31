@@ -22,7 +22,7 @@ export const superAdminGetUsersDescription: INodeProperties[] = [
 		type: 'number',
 		typeOptions: {
 			minValue: 1,
-			maxValue: 100,
+			maxValue: 50,
 		},
 		displayOptions: {
 			show: {
