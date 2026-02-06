@@ -14,20 +14,17 @@ RUN apk add --no-cache tini su-exec
 # Install n8n globally
 RUN npm install -g n8n@latest
 
-# Create node user
-RUN addgroup -g 1000 node-user && adduser -u 1000 -G node-user -s /bin/sh -D node-user
+# Copy custom node (use existing node user from node:20-alpine)
+RUN mkdir -p /home/node/.n8n/custom/@claira/n8n-nodes-claira
+COPY --from=builder /build/dist /home/node/.n8n/custom/@claira/n8n-nodes-claira/dist
+COPY --from=builder /build/package.json /home/node/.n8n/custom/@claira/n8n-nodes-claira/
 
-# Copy custom node
-RUN mkdir -p /home/node-user/.n8n/custom
-COPY --from=builder /build/dist /home/node-user/.n8n/custom/@claira/n8n-nodes-claira/dist
-COPY --from=builder /build/package.json /home/node-user/.n8n/custom/@claira/n8n-nodes-claira/
+RUN chown -R node:node /home/node/.n8n
 
-RUN chown -R node-user:node-user /home/node-user/.n8n
+USER node
+WORKDIR /home/node
 
-USER node-user
-WORKDIR /home/node-user
-
-ENV N8N_CUSTOM_EXTENSIONS="/home/node-user/.n8n/custom"
+ENV N8N_CUSTOM_EXTENSIONS="/home/node/.n8n/custom"
 
 EXPOSE 5678
 
