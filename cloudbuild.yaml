@@ -1,9 +1,14 @@
 steps:
-  - name: 'gcr.io/kaniko-project/executor:latest'
+  - name: 'gcr.io/cloud-builders/docker'
     args:
-      - '--dockerfile=Dockerfile'
-      - '--context=.'
-      - '--destination=gcr.io/${PROJECT_ID}/n8n-claira:${SHORT_SHA}'
-      - '--destination=gcr.io/${PROJECT_ID}/n8n-claira:latest'
-      - '--cache=false'
-      - '--single-snapshot'
+      - 'build'
+      - '--no-cache'
+      - '-t'
+      - 'gcr.io/${PROJECT_ID}/n8n-claira:${SHORT_SHA}'
+      - '-t'
+      - 'gcr.io/${PROJECT_ID}/n8n-claira:latest'
+      - '.'
+
+images:
+  - 'gcr.io/${PROJECT_ID}/n8n-claira:${SHORT_SHA}'
+  - 'gcr.io/${PROJECT_ID}/n8n-claira:latest'
