@@ -7,7 +7,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Copy built package into n8n image
-FROM n8nio/n8n:2.3.0
+FROM n8nio/n8n:latest
 
 USER root
 RUN mkdir -p /opt/custom-nodes/@claira/n8n-nodes-claira

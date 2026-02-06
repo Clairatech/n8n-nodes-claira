@@ -97,7 +97,9 @@ gcloud run services update n8n-claira \
   --update-env-vars "DB_POSTGRESDB_PASSWORD=$N8N_DB_PASSWORD" \
   --update-env-vars "N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY" \
   --update-env-vars "EXECUTIONS_MODE=regular" \
-  --update-env-vars "N8N_DIAGNOSTICS_ENABLED=false"
+  --update-env-vars "N8N_DIAGNOSTICS_ENABLED=false" \
+  --min-instances=1 \
+  --update-env-vars="DB_POSTGRESDB_KEEPALIVE_ENABLED=true,DB_POSTGRESDB_POOL_SIZE=5,DB_POSTGRESDB_POOL_ACQUIRE_TIMEOUT=60000,DB_POSTGRESDB_IDLE_TIMEOUT=300000,DB_POSTGRESDB_CONNECTION_MAX_LIFETIME=1800000"
 
 ## 4. Set Webhook URL
 
@@ -158,13 +160,17 @@ Now every push to the selected branch triggers a new deployment.
 2. **Use Secret Manager** for sensitive values instead of plain env vars:
    ```bash
    # Create secret
-   echo -n "YOUR_PASSWORD" | gcloud secrets create n8n-db-password --data-file=-
+   echo -n $N8N_DB_PASSWORD | gcloud secrets create n8n-db-password --data-file=-
+   echo -n $N8N_ENCRYPTION_KEY | gcloud secrets create n8n-encryption-key --data-file=-
    
    # Grant access to Cloud Run service account
    gcloud secrets add-iam-policy-binding n8n-db-password \
      --member="serviceAccount:$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
      --role="roles/secretmanager.secretAccessor"
-   
+   gcloud secrets add-iam-policy-binding n8n-encryption-key \
+     --member="serviceAccount:$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+     --role="roles/secretmanager.secretAccessor"
+
    # Update service to use secret
    gcloud run services update n8n-claira \
      --region us-central1 \
