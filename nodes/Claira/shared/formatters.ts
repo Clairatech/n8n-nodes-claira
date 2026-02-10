@@ -53,6 +53,94 @@ function formatObjectFields(obj: IDataObject, indent = ''): string {
 	return lines.join('\n');
 }
 
+function stripHtml(html: string): string {
+	return html
+		// Remove citation spans like [1], [2]
+		.replace(/<span class="citation-ref"[^>]*>\[?\d+\]?<\/span>/g, '')
+		// Replace <br /> and <br> with newline
+		.replace(/<br\s*\/?>/gi, '\n')
+		// Replace </p><p> with double newline
+		.replace(/<\/p>\s*<p>/gi, '\n')
+		// Remove all remaining HTML tags
+		.replace(/<[^>]*>/g, '')
+		// Decode common HTML entities
+		.replace(/&ldquo;/g, '\u201C')
+		.replace(/&rdquo;/g, '\u201D')
+		.replace(/&lsquo;/g, '\u2018')
+		.replace(/&rsquo;/g, '\u2019')
+		.replace(/&amp;/g, '&')
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/&nbsp;/g, ' ')
+		.replace(/&#\d+;/g, (match) => {
+			const code = parseInt(match.replace('&#', '').replace(';', ''), 10);
+			return String.fromCharCode(code);
+		})
+		// Clean up whitespace
+		.replace(/\n{3,}/g, '\n')
+		.trim();
+}
+
+/**
+ * Extract clean text from a section content field object.
+ * These have structure: { id, dashboard_id, title, type, value: { text: "<html>" }, citations: { ... } }
+ */
+function formatSectionField(field: IDataObject): string {
+	const value = field.value as IDataObject | undefined;
+	if (!value) return 'N/A';
+
+	const text = value.text as string | undefined;
+	if (!text) return 'N/A';
+
+	return stripHtml(text) || 'N/A';
+}
+
+/**
+ * Check if an object looks like a section content field (has id, title, type, value.text).
+ */
+function isSectionContentField(obj: unknown): boolean {
+	if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+	const o = obj as IDataObject;
+	return !!(o.type && o.value && typeof o.value === 'object' && (o.value as IDataObject).text);
+}
+
+/**
+ * Format section contents (e.g. "Base Info 1" with fields like Lien, EBITDA, Sector).
+ * Extracts clean text from value.text, strips HTML, and optionally includes citation sources.
+ */
+function formatSectionContentsToMarkdown(sectionContents: IDataObject): string {
+	let md = '';
+
+	for (const [sectionKey, sectionValue] of Object.entries(sectionContents)) {
+		const sectionName = formatFieldName(sectionKey);
+		md += `\n\n#### ${sectionName}`;
+
+		if (sectionValue && typeof sectionValue === 'object' && !Array.isArray(sectionValue)) {
+			const fields = sectionValue as IDataObject;
+			const lines: string[] = [];
+
+			for (const [fieldKey, fieldValue] of Object.entries(fields)) {
+				if (isSectionContentField(fieldValue)) {
+					// It's a section content field with value.text — extract clean text
+					const cleanText = formatSectionField(fieldValue as IDataObject);
+					lines.push(`- **${fieldKey}:** ${cleanText}`);
+				} else {
+					// Fallback for non-section fields
+					lines.push(`- **${formatFieldName(fieldKey)}:** ${formatValue(fieldValue)}`);
+				}
+			}
+
+			if (lines.length > 0) {
+				md += '\n' + lines.join('\n');
+			}
+		} else {
+			md += `\n- ${formatValue(sectionValue)}`;
+		}
+	}
+
+	return md;
+}
+
 export function formatDealToMarkdown(deal: IDataObject): string {
 	const dealData = (deal.data as IDataObject) || {};
 	const sectionContents = (deal.section_contents as IDataObject) || {};
@@ -76,15 +164,7 @@ export function formatDealToMarkdown(deal: IDataObject): string {
 	// Add all fields from section_contents
 	if (Object.keys(sectionContents).length > 0) {
 		md += `\n\n### Section Contents`;
-		for (const [sectionKey, sectionValue] of Object.entries(sectionContents)) {
-			const sectionName = formatFieldName(sectionKey);
-			md += `\n\n#### ${sectionName}`;
-			if (sectionValue && typeof sectionValue === 'object' && !Array.isArray(sectionValue)) {
-				md += '\n' + formatObjectFields(sectionValue as IDataObject);
-			} else {
-				md += `\n- ${formatValue(sectionValue)}`;
-			}
-		}
+		md += formatSectionContentsToMarkdown(sectionContents);
 	}
 
 	return md;
@@ -319,15 +399,7 @@ export function formatCreatedDealToMarkdown(deal: IDataObject): string {
 	// Add all fields from section_contents
 	if (Object.keys(sectionContents).length > 0) {
 		md += `\n\n### Section Contents`;
-		for (const [sectionKey, sectionValue] of Object.entries(sectionContents)) {
-			const sectionName = formatFieldName(sectionKey);
-			md += `\n\n#### ${sectionName}`;
-			if (sectionValue && typeof sectionValue === 'object' && !Array.isArray(sectionValue)) {
-				md += '\n' + formatObjectFields(sectionValue as IDataObject);
-			} else {
-				md += `\n- ${formatValue(sectionValue)}`;
-			}
-		}
+		md += formatSectionContentsToMarkdown(sectionContents);
 	}
 
 	return md;

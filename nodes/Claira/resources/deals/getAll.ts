@@ -87,13 +87,33 @@ export const dealGetManyDescription: INodeProperties[] = [
 				default: '',
 				description: 'Filter deals updated after this date',
 			},
-			{
-				displayName: 'Updated Before',
-				name: 'updated_at.lt',
-				type: 'dateTime',
-				default: '',
-				description: 'Filter deals updated before this date',
-			},
-		],
+		{
+		displayName: 'Updated Before',
+		name: 'updated_at.lt',
+		type: 'dateTime',
+		default: '',
+		description: 'Filter deals updated before this date',
 	},
+	],
+},
+{
+	displayName: 'Include Section Contents',
+	name: 'includeSectionContents',
+	type: 'boolean',
+	displayOptions: {
+		show: showOnlyForDealGetMany,
+	},
+	default: false,
+	description: 'Whether to include section contents (dashboard fields like Lien, EBITDA, Sector, etc.) for each deal. Dynamically fetches the configured columns from the analyses config.',
+},
+{
+	displayName: 'Include Latest Activities',
+	name: 'includeLatestActivities',
+	type: 'boolean',
+	displayOptions: {
+		show: showOnlyForDealGetMany,
+	},
+	default: false,
+	description: 'Whether to include the latest activity for each deal',
+},
 ];

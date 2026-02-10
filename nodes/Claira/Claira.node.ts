@@ -397,6 +397,8 @@ export class Claira implements INodeType {
 					if (operation === 'getAll') {
 						const returnAll = this.getNodeParameter('returnAll', i, false) as boolean;
 						const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
+						const includeSectionContents = this.getNodeParameter('includeSectionContents', i, false) as boolean;
+						const includeLatestActivities = this.getNodeParameter('includeLatestActivities', i, false) as boolean;
 						const qs: IDataObject = {};
 
 						// Log parameters for debugging
@@ -404,6 +406,8 @@ export class Claira implements INodeType {
 							this.logger.debug('[Deals GetAll] Parameters:', {
 								returnAll,
 								filters,
+								includeSectionContents,
+								includeLatestActivities,
 								limitParam: this.getNodeParameter('limit', i, 50),
 							});
 						}
@@ -416,6 +420,58 @@ export class Claira implements INodeType {
 									qs[key] = value;
 								}
 							});
+						}
+
+						// If includeSectionContents, fetch analyses config to get section columns
+						if (includeSectionContents) {
+							try {
+								const configResponse = await clairaApiRequest.call(
+									this,
+									'GET',
+									'/credit_analysis/analyses/config/',
+									clientId,
+								);
+
+								// Response is { data: { ..., dashboards_config: { deals: { columns: {...} } } } }
+								const configData = (configResponse.data as IDataObject) || configResponse;
+								const dashboardsConfig = (configData.dashboards_config as IDataObject) || {};
+								const dealsConfig = (dashboardsConfig.deals as IDataObject) || {};
+								const columns = (dealsConfig.columns as IDataObject) || {};
+
+								// Filter section-type columns and build base64-encoded section_columns param
+								const sectionColumns: string[] = [];
+								for (const [, colConfig] of Object.entries(columns)) {
+									const col = colConfig as IDataObject;
+									if (col.type === 'section' && col.dashboard_name && col.section_name) {
+										const encodedDashboard = Buffer.from(String(col.dashboard_name)).toString('base64')
+											.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+										const encodedSection = Buffer.from(String(col.section_name)).toString('base64')
+											.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+										sectionColumns.push(`${encodedDashboard}__${encodedSection}`);
+									}
+								}
+
+								if (sectionColumns.length > 0) {
+									qs.section_columns = sectionColumns.join(',');
+								}
+
+								if (this.logger) {
+									this.logger.debug('[Deals GetAll] Section columns:', {
+										columnCount: sectionColumns.length,
+										sectionColumns: qs.section_columns,
+									});
+								}
+							} catch (error) {
+								if (this.logger) {
+									this.logger.warn('[Deals GetAll] Failed to fetch section columns from config', {
+										error: error instanceof Error ? error.message : String(error),
+									});
+								}
+							}
+						}
+
+						if (includeLatestActivities) {
+							qs.latest_activities = 1;
 						}
 
 						if (!returnAll) {
@@ -487,7 +543,7 @@ export class Claira implements INodeType {
 							}
 						} else {
 							// For returnAll, fetch all pages
-							qs.page_size = 100;
+							qs.page_size = 50;
 							qs.page = 1;
 
 							const allDeals: IDataObject[] = [];
