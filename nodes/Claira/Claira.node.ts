@@ -26,6 +26,7 @@ import {
 	formatCreatedActivityToMarkdown,
 	formatReportsToMarkdown,
 	formatReportSectionsToMarkdown,
+	formatConversationToMarkdown,
 } from './shared/formatters';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
@@ -1035,6 +1036,144 @@ export class Claira implements INodeType {
 
 						// Extract sections from response
 						responseData = (sectionsResponse.data as IDataObject[]) || sectionsResponse;
+					} else if (operation === 'askQuestion') {
+						const dealId = this.getNodeParameter('dealId', i) as string;
+						const question = this.getNodeParameter('question', i) as string;
+						const contextOptions = this.getNodeParameter('contextOptions', i, {}) as IDataObject;
+						const pollingOptions = this.getNodeParameter('pollingOptions', i, {}) as IDataObject;
+
+						const pollingInterval = ((pollingOptions.pollingInterval as number) || 2) * 1000;
+						const timeout = ((pollingOptions.timeout as number) || 300) * 1000;
+
+						// Build request body
+						const body: IDataObject = {
+							text: question,
+						};
+
+						if (contextOptions.useDocuments !== undefined) {
+							body.use_documents = contextOptions.useDocuments;
+						}
+						if (contextOptions.useSpreadsheets !== undefined) {
+							body.use_spreadsheets = contextOptions.useSpreadsheets;
+						}
+						if (contextOptions.useSections !== undefined) {
+							body.use_sections = contextOptions.useSections;
+						}
+						if (contextOptions.useWebSearch !== undefined) {
+							body.use_web_search = contextOptions.useWebSearch;
+						}
+						if (contextOptions.documentIds) {
+							const docIdsStr = contextOptions.documentIds as string;
+							body.document_ids = docIdsStr.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+						}
+						if (contextOptions.dashboardIds) {
+							const dashboardIdsStr = contextOptions.dashboardIds as string;
+							body.dashboard_ids = dashboardIdsStr.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+						}
+						if (contextOptions.startDate) {
+							body.start_date = contextOptions.startDate;
+						}
+						if (contextOptions.endDate) {
+							body.end_date = contextOptions.endDate;
+						}
+
+						// POST the question
+						const postResponse = await clairaApiRequest.call(
+							this,
+							'POST',
+							`/conversations/${dealId}/`,
+							clientId,
+							body,
+						);
+
+						const postedMessage = (postResponse.data as IDataObject) || postResponse;
+						const postedMessageId = postedMessage.id as string;
+
+						if (this.logger) {
+							this.logger.debug('[Ask Question] Posted question', {
+								dealId,
+								messageId: postedMessageId,
+								question: question.substring(0, 100),
+							});
+						}
+
+						// Poll for AI response
+						const startTime = Date.now();
+						let aiResponse: IDataObject | undefined;
+
+						while (Date.now() - startTime < timeout) {
+							// Wait before polling
+							await new Promise((resolve) => setTimeout(resolve, pollingInterval));
+
+							// Fetch conversations sorted by newest first
+							const getResponse = await clairaApiRequest.call(
+								this,
+								'GET',
+								`/conversations/${dealId}/`,
+								clientId,
+								undefined,
+								{ 'created_at:desc': '', page_size: 5 },
+							);
+
+							const data = (getResponse.data as IDataObject) || getResponse;
+							const conversations = (data.conversations as IDataObject[]) || [];
+
+							if (this.logger) {
+								this.logger.debug('[Ask Question] Polling conversations', {
+									count: conversations.length,
+									elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
+								});
+							}
+
+							// Look for an AI-generated response that came after our posted message
+							for (const conv of conversations) {
+								if (conv.ai_generated === true) {
+									// Found the AI response
+									aiResponse = conv;
+									break;
+								}
+								if (conv.id === postedMessageId) {
+									// We've reached our question without finding an AI response yet — keep polling
+									break;
+								}
+							}
+
+							if (aiResponse) {
+								break;
+							}
+						}
+
+						if (!aiResponse) {
+							throw new NodeOperationError(
+								this.getNode(),
+								`Timed out waiting for AI response after ${timeout / 1000} seconds. The question was posted successfully (message ID: ${postedMessageId}). You can try fetching the conversation later.`,
+								{ itemIndex: i },
+							);
+						}
+
+						// Parse citations if stored as string
+						let citations = aiResponse.citations;
+						if (typeof citations === 'string') {
+							try {
+								citations = JSON.parse(citations);
+							} catch {
+								// keep as string
+							}
+						}
+
+						responseData = {
+							deal_id: dealId,
+							question,
+							question_id: postedMessageId,
+							question_created_at: postedMessage.created_at,
+							answer: aiResponse.text,
+							answer_id: aiResponse.id,
+							answer_created_at: aiResponse.created_at,
+							response_time_ms: aiResponse.response_time_ms,
+							citations,
+							thinking_steps: aiResponse.thinking_steps,
+							context_settings: aiResponse.context_settings,
+						};
 					}
 
 					// Apply markdown formatting if requested
@@ -1066,6 +1205,8 @@ export class Claira implements INodeType {
 						} else if (operation === 'getReportSections') {
 							const sections = Array.isArray(responseData) ? responseData : [responseData];
 							markdownContent = formatReportSectionsToMarkdown(sections as IDataObject[]);
+						} else if (operation === 'askQuestion') {
+							markdownContent = formatConversationToMarkdown(responseData as IDataObject);
 						}
 
 						if (markdownContent) {

@@ -1,6 +1,6 @@
 {
 	"name": "@claira/n8n-nodes-claira",
-	"version": "0.0.6",
+	"version": "0.0.7",
 	"description": "n8n node for Claira Platform API integration (claira_auth and claira_doc_analysis)",
 	"license": "MIT",
 	"homepage": "https://github.com/clairaTech/n8n-nodes-claira#readme",

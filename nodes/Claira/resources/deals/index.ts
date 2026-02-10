@@ -9,6 +9,7 @@ import { dealGetActivitiesDescription } from './getActivities';
 import { dealCreateActivityDescription } from './createActivity';
 import { dealGetReportsDescription } from './getReports';
 import { dealGetReportSectionsDescription } from './getReportSections';
+import { dealAskQuestionDescription } from './askQuestion';
 
 const showOnlyForDeals = {
 	resource: ['deals'],
@@ -47,6 +48,12 @@ export const dealDescription: INodeProperties[] = [
 			show: showOnlyForDeals,
 		},
 		options: [
+			{
+				name: 'Ask Question',
+				value: 'askQuestion',
+				action: 'Ask a deal question',
+				description: 'Ask a question about a deal and wait for the AI response',
+			},
 			{
 				name: 'Create',
 				value: 'create',
@@ -121,4 +128,5 @@ export const dealDescription: INodeProperties[] = [
 	...dealCreateActivityDescription,
 	...dealGetReportsDescription,
 	...dealGetReportSectionsDescription,
+	...dealAskQuestionDescription,
 ];

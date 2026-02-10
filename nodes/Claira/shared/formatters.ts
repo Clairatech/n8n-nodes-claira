@@ -431,6 +431,125 @@ export function formatSetStatusToMarkdown(data: IDataObject): string {
 	return md;
 }
 
+interface ParsedCitation {
+	type: string;
+	documentName: string;
+	sectionTitle: string | null;
+	timelapseName: string | null;
+	isSpreadsheet: boolean;
+	pageNumbers: number[];
+	reference: string | null;
+}
+
+function parseCitations(raw: unknown): ParsedCitation[] {
+	if (!raw) return [];
+
+	// Backend returns { citations: [ ... ] } from CitationAgent.model_dump()
+	if (typeof raw === 'object' && raw !== null && !Array.isArray(raw) && 'citations' in (raw as IDataObject)) {
+		raw = (raw as IDataObject).citations;
+	}
+
+	let items: IDataObject[] = [];
+
+	// Citations can be a JSON string, an array, or an object with numeric/string keys
+	if (typeof raw === 'string') {
+		try {
+			const parsed = JSON.parse(raw);
+			if (Array.isArray(parsed)) {
+				items = parsed;
+			} else if (typeof parsed === 'object' && parsed !== null && 'citations' in parsed) {
+				items = (parsed as IDataObject).citations as IDataObject[];
+			} else if (typeof parsed === 'object' && parsed !== null) {
+				items = Object.values(parsed);
+			}
+		} catch {
+			return [];
+		}
+	} else if (Array.isArray(raw)) {
+		items = raw as IDataObject[];
+	} else if (typeof raw === 'object' && raw !== null) {
+		items = Object.values(raw as Record<string, unknown>) as IDataObject[];
+	}
+
+	// Each item might itself be a JSON string (nested encoding)
+	const flattened: IDataObject[] = [];
+	for (const item of items) {
+		if (typeof item === 'string') {
+			try {
+				flattened.push(JSON.parse(item) as IDataObject);
+			} catch {
+				// skip malformed
+			}
+		} else if (item && typeof item === 'object') {
+			flattened.push(item);
+		}
+	}
+
+	return flattened
+		.filter((c) => c.document_name || c.reference)
+		.map((c) => {
+			const location = c.location as IDataObject | undefined;
+			const positionInfo = (location?.position_info as IDataObject[]) || [];
+			const pageNumbers = positionInfo
+				.map((p) => p.page_number as number)
+				.filter((n) => n !== undefined && n !== null);
+
+			return {
+				type: (c.type as string) || 'document',
+				documentName: (c.document_name as string) || 'Unknown source',
+				sectionTitle: (c.section_title as string) || null,
+				timelapseName: (c.timelapse_name as string) || null,
+				isSpreadsheet: (c.is_spreadsheet as boolean) || false,
+				pageNumbers: [...new Set(pageNumbers)],
+				reference: (c.reference as string) || null,
+			};
+		});
+}
+
+export function formatConversationToMarkdown(data: IDataObject): string {
+	const answer = data.answer as string || '';
+	const dealId = data.deal_id as string || '';
+	const answerTime = formatDate(data.answer_created_at as string);
+	const responseTimeMs = data.response_time_ms as number | undefined;
+	const citations = data.citations as IDataObject | undefined;
+
+	let md = `# Answer
+${answer}
+- **Answered:** ${answerTime}`;
+
+	if (dealId) {
+		md += `\n- **Deal:** [Open Deal](${getDealUrl(dealId)})`;
+	}
+
+	if (responseTimeMs !== undefined && responseTimeMs !== null) {
+		const seconds = (responseTimeMs / 1000).toFixed(1);
+		md += `\n- **Response Time:** ${seconds}s`;
+	}
+
+	const parsedCitations = parseCitations(citations);
+	if (parsedCitations.length > 0) {
+		md += '\n\n### Sources';
+		for (let idx = 0; idx < parsedCitations.length; idx++) {
+			const c = parsedCitations[idx];
+			md += `\n\n**[${idx + 1}]** ${c.documentName}`;
+			if (c.reference) {
+				md += `\n> ${c.reference}`;
+			}
+			const details: string[] = [];
+			if (c.type) details.push(`Type: ${c.type}`);
+			if (c.pageNumbers) details.push(`Page${c.pageNumbers.length > 1 ? 's' : ''}: ${c.pageNumbers.join(', ')}`);
+			if (c.sectionTitle) details.push(`Section: ${c.sectionTitle}`);
+			if (c.timelapseName) details.push(`Period: ${c.timelapseName}`);
+			if (c.isSpreadsheet) details.push('(spreadsheet)');
+			if (details.length > 0) {
+				md += `\n- ${details.join(' | ')}`;
+			}
+		}
+	}
+
+	return md;
+}
+
 export function formatCreatedActivityToMarkdown(activity: IDataObject): string {
 	const title = activity.title as string || 'Untitled';
 	const description = activity.description as string || '';
