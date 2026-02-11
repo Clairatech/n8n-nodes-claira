@@ -807,12 +807,15 @@ export class Claira implements INodeType {
 									const dashboardId = dashboard.id || dashboard.dashboard_id;
 
 									if (dashboardId) {
-										// Create sections from template
+										// Create sections from template (sort by position so order is preserved)
 										const templateValue = template.value as IDataObject;
 										const templateSections = (templateValue?.sections as IDataObject[]) || [];
-										if (Array.isArray(templateSections) && templateSections.length > 0) {
-											for (let index = 0; index < templateSections.length; index++) {
-												const sectionTemplate = templateSections[index];
+										const sortedSections = [...templateSections].sort(
+											(a, b) => (Number(a.position) ?? 0) - (Number(b.position) ?? 0),
+										);
+										if (sortedSections.length > 0) {
+											for (let index = 0; index < sortedSections.length; index++) {
+												const sectionTemplate = sortedSections[index];
 												const sectionBody: IDataObject = {
 													...sectionTemplate,
 													dashboard_id: dashboardId,
@@ -1381,13 +1384,16 @@ export class Claira implements INodeType {
 							);
 						}
 
-						// Create sections from template
+						// Create sections from template (sort by position so order is preserved)
 						// Sections are nested in template.value.sections
 						const templateValue = template.value as IDataObject;
 						const templateSections = (templateValue?.sections as IDataObject[]) || [];
-						if (Array.isArray(templateSections) && templateSections.length > 0) {
-							for (let index = 0; index < templateSections.length; index++) {
-								const sectionTemplate = templateSections[index];
+						const sortedSections = [...templateSections].sort(
+							(a, b) => (Number(a.position) ?? 0) - (Number(b.position) ?? 0),
+						);
+						if (sortedSections.length > 0) {
+							for (let index = 0; index < sortedSections.length; index++) {
+								const sectionTemplate = sortedSections[index];
 								// Create section based on template structure
 								// Copy the template section and set dashboard_id
 								const sectionBody: IDataObject = {
