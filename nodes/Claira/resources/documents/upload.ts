@@ -28,7 +28,8 @@ export const documentUploadDescription: INodeProperties[] = [
 			},
 		},
 		default: '',
-		description: 'Deal ID for credit analysis documents (required for credit_analysis)',
+		description:
+			'Deal ID for credit analysis documents (required for credit_analysis). When uploading a .zip file with a Deal ID set, the zip is sent to the bulk endpoint and each file inside is created as a separate document.',
 	},
 	{
 		displayName: 'Folder ID',

@@ -193,10 +193,6 @@ export class Claira implements INodeType {
 							binaryPropertyName = 'data';
 						}
 
-						const endpoint = dealId
-							? `/credit_analysis/deals/${dealId}/docs/`
-							: `/${modelType}/docs/`;
-
 						// Verify binary data exists
 						const item = items[i];
 						if (!item.binary || !item.binary[binaryPropertyName]) {
@@ -221,21 +217,39 @@ export class Claira implements INodeType {
 						}
 
 					// Use httpRequest directly for multipart/form-data
+					const binaryData = item.binary[binaryPropertyName];
+					const binaryBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
+					const fileName = binaryData.fileName || 'file';
+					const mimeType = binaryData.mimeType || 'application/octet-stream';
+
+					// Detect zip: by extension or mime type (zip uses a different endpoint)
+					const isZip =
+						fileName.toLowerCase().endsWith('.zip') ||
+						mimeType === 'application/zip' ||
+						mimeType === 'application/x-zip-compressed';
+
+					if (isZip && !dealId) {
+						throw new NodeOperationError(
+							this.getNode(),
+							'Zip upload is only supported when uploading to a deal. Please set Deal ID.',
+							{ itemIndex: i },
+						);
+					}
+
+					const endpoint =
+						dealId && isZip
+							? `/credit_analysis/deals/${dealId}/docs/zip/`
+							: dealId
+								? `/credit_analysis/deals/${dealId}/docs/`
+								: `/${modelType}/docs/`;
+
 					const { docAnalysisUrl } = await getBaseUrls.call(this);
 					const accessToken = await ensureAuthenticated.call(this);
 					const uploadUrl = `${docAnalysisUrl}/clients/${clientId}${endpoint}`;
 
-					// Get binary data buffer and metadata
-					const binaryData = item.binary[binaryPropertyName];
-					const binaryBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
-					
 					// Manually construct multipart/form-data body (no external deps)
 					const boundary = '----n8nFormBoundary' + Date.now().toString(36) + Math.random().toString(36).substring(2);
 					const parts: Buffer[] = [];
-					
-					// Add file field
-					const fileName = binaryData.fileName || 'file';
-					const mimeType = binaryData.mimeType || 'application/octet-stream';
 					parts.push(Buffer.from(
 						`--${boundary}\r\n` +
 						`Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
@@ -244,46 +258,48 @@ export class Claira implements INodeType {
 					parts.push(binaryBuffer);
 					parts.push(Buffer.from('\r\n'));
 
-					// Add other fields
-					if (folderId) {
-						parts.push(Buffer.from(
-							`--${boundary}\r\n` +
-							`Content-Disposition: form-data; name="folder_id"\r\n\r\n` +
-							`${folderId}\r\n`
-						));
-					}
-					if (financialTypeIds) {
-						try {
-							const parsedIds =
-								typeof financialTypeIds === 'string'
-									? JSON.parse(financialTypeIds)
-									: financialTypeIds;
+					// Zip endpoint only accepts file (and optional parent_id/period_id not in node UI)
+					if (!isZip) {
+						if (folderId) {
 							parts.push(Buffer.from(
 								`--${boundary}\r\n` +
-								`Content-Disposition: form-data; name="financial_type_ids"\r\n\r\n` +
-								`${JSON.stringify(parsedIds)}\r\n`
+								`Content-Disposition: form-data; name="folder_id"\r\n\r\n` +
+								`${folderId}\r\n`
 							));
-						} catch {
-							throw new NodeOperationError(
-								this.getNode(),
-								'Financial Type IDs must be a valid JSON array. Example: ["uuid1", "uuid2"]',
-							);
 						}
-					}
-					if (metadata) {
-						try {
-							const parsedMetadata =
-								typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
-							parts.push(Buffer.from(
-								`--${boundary}\r\n` +
-								`Content-Disposition: form-data; name="metadata"\r\n\r\n` +
-								`${JSON.stringify(parsedMetadata)}\r\n`
-							));
-						} catch {
-							throw new NodeOperationError(
-								this.getNode(),
-								'Metadata must be a valid JSON object',
-							);
+						if (financialTypeIds) {
+							try {
+								const parsedIds =
+									typeof financialTypeIds === 'string'
+										? JSON.parse(financialTypeIds)
+										: financialTypeIds;
+								parts.push(Buffer.from(
+									`--${boundary}\r\n` +
+									`Content-Disposition: form-data; name="financial_type_ids"\r\n\r\n` +
+									`${JSON.stringify(parsedIds)}\r\n`
+								));
+							} catch {
+								throw new NodeOperationError(
+									this.getNode(),
+									'Financial Type IDs must be a valid JSON array. Example: ["uuid1", "uuid2"]',
+								);
+							}
+						}
+						if (metadata) {
+							try {
+								const parsedMetadata =
+									typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+								parts.push(Buffer.from(
+									`--${boundary}\r\n` +
+									`Content-Disposition: form-data; name="metadata"\r\n\r\n` +
+									`${JSON.stringify(parsedMetadata)}\r\n`
+								));
+							} catch {
+								throw new NodeOperationError(
+									this.getNode(),
+									'Metadata must be a valid JSON object',
+								);
+							}
 						}
 					}
 					
@@ -307,6 +323,7 @@ export class Claira implements INodeType {
 					if (this.logger) {
 						this.logger.debug('Upload request', {
 							url: uploadUrl,
+							isZip,
 							hasFile: true,
 							fileName: binaryData.fileName,
 							mimeType: binaryData.mimeType,
@@ -381,6 +398,11 @@ export class Claira implements INodeType {
 									{ itemIndex: i },
 								);
 							}
+						}
+
+						// Zip endpoint returns { data: [ doc1, doc2, ... ] }; normalize to array so we output one item per doc
+						if (responseData && isZip && (responseData as IDataObject).data && Array.isArray((responseData as IDataObject).data)) {
+							responseData = (responseData as IDataObject).data as IDataObject[];
 						}
 					} else if (operation === 'delete') {
 						const modelType = this.getNodeParameter('modelType', i) as string;

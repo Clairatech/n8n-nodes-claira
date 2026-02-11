@@ -46,7 +46,7 @@ export const documentDescription: INodeProperties[] = [
 				name: 'Upload',
 				value: 'upload',
 				action: 'Upload a document',
-				description: 'Upload a new document',
+				description: 'Upload a document or a .zip (to a deal; zip creates one doc per file inside)',
 				routing: {
 					request: {
 						method: 'POST',
