@@ -807,19 +807,15 @@ export class Claira implements INodeType {
 									const dashboardId = dashboard.id || dashboard.dashboard_id;
 
 									if (dashboardId) {
-										// Create sections from template (sort by position so order is preserved)
 										const templateValue = template.value as IDataObject;
-										const templateSections = (templateValue?.sections as IDataObject[]) || [];
-										const sortedSections = [...templateSections].sort(
-											(a, b) => (Number(a.position) ?? 0) - (Number(b.position) ?? 0),
-										);
-										if (sortedSections.length > 0) {
-											for (let index = 0; index < sortedSections.length; index++) {
-												const sectionTemplate = sortedSections[index];
+										const templateSections = [...((templateValue?.sections as IDataObject[]) || [])].reverse();
+										if (templateSections.length > 0) {
+											for (let index = 0; index < templateSections.length; index++) {
+												const sectionTemplate = templateSections[index];
 												const sectionBody: IDataObject = {
 													...sectionTemplate,
 													dashboard_id: dashboardId,
-													position: sectionTemplate.position !== undefined ? sectionTemplate.position : index + 1,
+													position: index + 1,
 													value: sectionTemplate.value !== undefined ? sectionTemplate.value : {},
 												};
 
@@ -1034,8 +1030,8 @@ export class Claira implements INodeType {
 											`/credit_analysis/dashboard-sections/${dashboardId}/`,
 											clientId,
 										);
-										report.sections = (sectionsResponse.data as IDataObject[]) || sectionsResponse;
-									} catch (error) {
+									report.sections = (sectionsResponse.data as IDataObject[]) || sectionsResponse;
+								} catch (error) {
 										// If sections fetch fails, continue without sections
 										if (this.logger) {
 											this.logger.warn(`Failed to fetch sections for dashboard ${dashboardId}`, {
@@ -1059,7 +1055,6 @@ export class Claira implements INodeType {
 							clientId,
 						);
 
-						// Extract sections from response
 						responseData = (sectionsResponse.data as IDataObject[]) || sectionsResponse;
 					} else if (operation === 'askQuestion') {
 						const dealId = this.getNodeParameter('dealId', i) as string;
@@ -1384,22 +1379,15 @@ export class Claira implements INodeType {
 							);
 						}
 
-						// Create sections from template (sort by position so order is preserved)
-						// Sections are nested in template.value.sections
 						const templateValue = template.value as IDataObject;
-						const templateSections = (templateValue?.sections as IDataObject[]) || [];
-						const sortedSections = [...templateSections].sort(
-							(a, b) => (Number(a.position) ?? 0) - (Number(b.position) ?? 0),
-						);
-						if (sortedSections.length > 0) {
-							for (let index = 0; index < sortedSections.length; index++) {
-								const sectionTemplate = sortedSections[index];
-								// Create section based on template structure
-								// Copy the template section and set dashboard_id
+						const templateSections = [...((templateValue?.sections as IDataObject[]) || [])].reverse();
+						if (templateSections.length > 0) {
+							for (let index = 0; index < templateSections.length; index++) {
+								const sectionTemplate = templateSections[index];
 								const sectionBody: IDataObject = {
 									...sectionTemplate,
 									dashboard_id: dashboardId,
-									position: sectionTemplate.position !== undefined ? sectionTemplate.position : index + 1,
+									position: index + 1,
 									value: sectionTemplate.value !== undefined ? sectionTemplate.value : {},
 								};
 
