@@ -1450,6 +1450,8 @@ export class Claira implements INodeType {
 						}
 
 						const templateSections = [...(((template.value as IDataObject)?.sections as IDataObject[]) || [])].reverse();
+						const createdSectionIds: string[] = [];
+
 						if (templateSections.length > 0) {
 							for (let index = 0; index < templateSections.length; index++) {
 								const sectionTemplate = templateSections[index];
@@ -1478,14 +1480,44 @@ export class Claira implements INodeType {
 									delete sectionBody.context_settings;
 								}
 
-								await clairaApiRequest.call(
+								const sectionResponse = await clairaApiRequest.call(
 									this,
 									'POST',
 									'/credit_analysis/dashboard-sections/',
 									clientId,
 									sectionBody,
-								);
+								) as IDataObject;
+
+								const createdSection = (sectionResponse.data as IDataObject) || sectionResponse;
+								const createdId = createdSection.id as string;
+								if (createdId) {
+									createdSectionIds.push(createdId);
+								}
 							}
+						}
+
+						// Create a preset to preserve section order and column layout
+						if (createdSectionIds.length > 0) {
+							const columns = (templateValue?.columns as number) || 1;
+							const presetBody: IDataObject = {
+								name: dashboardId as string,
+								is_public: true,
+								preset_type: 'deal_analysis_main',
+								data: [],
+								config: {
+									rows: {
+										order: createdSectionIds,
+										itemsPerRow: columns,
+									},
+								},
+							};
+
+							await clairaAuthRequest.call(
+								this,
+								'POST',
+								'/credit_analysis/presets/',
+								presetBody,
+							);
 						}
 
 						responseData = dashboard;
