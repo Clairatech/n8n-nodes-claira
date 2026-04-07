@@ -1323,7 +1323,6 @@ export class Claira implements INodeType {
 						const title = this.getNodeParameter('title', i, '') as string;
 						const public_ = this.getNodeParameter('public', i, true) as boolean;
 						const isDefault = this.getNodeParameter('isDefault', i, false) as boolean;
-						const overviewDashboard = this.getNodeParameter('overviewDashboard', i, false) as boolean;
 
 						// Get all templates and filter locally by ID
 						const templates = await clairaApiRequest.call(
@@ -1350,6 +1349,10 @@ export class Claira implements INodeType {
 								{ itemIndex: i },
 							);
 						}
+
+						// Check the template's is_overview flag to decide behavior
+						const templateValue = template.value as IDataObject | undefined;
+						const overviewDashboard = templateValue?.is_overview === true;
 
 						let dashboard: IDataObject;
 						let dashboardId: unknown;
@@ -1446,8 +1449,7 @@ export class Claira implements INodeType {
 							);
 						}
 
-						const templateValue = template.value as IDataObject;
-						const templateSections = [...((templateValue?.sections as IDataObject[]) || [])].reverse();
+						const templateSections = [...(((template.value as IDataObject)?.sections as IDataObject[]) || [])].reverse();
 						if (templateSections.length > 0) {
 							for (let index = 0; index < templateSections.length; index++) {
 								const sectionTemplate = templateSections[index];

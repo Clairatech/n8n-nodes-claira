@@ -70,15 +70,4 @@ export const dashboardCreateFromTemplateDescription: INodeProperties[] = [
 			},
 		},
 	},
-	{
-		displayName: 'Overview Dashboard',
-		name: 'overviewDashboard',
-		type: 'boolean',
-		displayOptions: {
-			show: showOnlyForDashboardCreateFromTemplate,
-		},
-		default: false,
-		description:
-			'Whether to apply the template sections to the existing default (Overview) dashboard instead of creating a new one. Existing sections on the default dashboard will be removed first.',
-	},
 ];
