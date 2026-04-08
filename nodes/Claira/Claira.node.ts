@@ -953,7 +953,7 @@ export class Claira implements INodeType {
 										await clairaAuthRequest.call(
 											this,
 											'POST',
-											'/credit_analysis/presets/',
+											`/clients/${clientId}/credit_analysis/presets/`,
 											presetBody,
 										);
 									}
@@ -1626,7 +1626,7 @@ export class Claira implements INodeType {
 							await clairaAuthRequest.call(
 								this,
 								'POST',
-								'/credit_analysis/presets/',
+								`/clients/${clientId}/credit_analysis/presets/`,
 								presetBody,
 							);
 						}
