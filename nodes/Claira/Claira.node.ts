@@ -944,7 +944,7 @@ export class Claira implements INodeType {
 											data: [],
 											config: {
 												rows: {
-													order: createdSectionIds,
+													order: [...createdSectionIds].reverse(),
 													itemsPerRow: columns,
 												},
 											},
@@ -1617,7 +1617,7 @@ export class Claira implements INodeType {
 								data: [],
 								config: {
 									rows: {
-										order: createdSectionIds,
+										order: [...createdSectionIds].reverse(),
 										itemsPerRow: columns,
 									},
 								},
