@@ -82,26 +82,82 @@ function stripHtml(html: string): string {
 }
 
 /**
+ * Format structured_content items as compact pipe-delimited string.
+ * Input: [{type, label, value, ...}, ...]
+ * Items with null/undefined values are skipped.
+ */
+function formatStructuredItems(items: IDataObject[]): string {
+	const parts: Array<{ label: string; value: string }> = [];
+	for (const item of items) {
+		const val = item.value;
+		if (val === null || val === undefined) continue;
+		const label = (item.label as string) || '';
+		parts.push({ label, value: String(val) });
+	}
+	if (parts.length === 0) return '';
+	if (parts.length === 1) return parts[0].value;
+	return parts.map((p) => `${p.label}: ${p.value}`).join(' | ');
+}
+
+/**
+ * Format metrics items as markdown bullet list.
+ * Input: [{title, value, description}, ...]
+ */
+function formatMetricsItems(items: IDataObject[]): string {
+	const lines: string[] = [];
+	for (const metric of items) {
+		const title = (metric.title as string) || 'Untitled';
+		const val = metric.value !== null && metric.value !== undefined ? String(metric.value) : 'N/A';
+		const desc = (metric.description as string) || '';
+		let line = `- **${title}:** ${val}`;
+		if (desc) line += ` — ${desc}`;
+		lines.push(line);
+	}
+	return lines.join('\n');
+}
+
+/**
+ * Convert a section's value dict into readable text.
+ * Handles three formats:
+ * - rich_text: { text: "<html>" }
+ * - structured_content: { structured: [{type, label, value}, ...] }
+ * - metrics: { metrics: [{title, value, description}, ...] }
+ */
+function formatSectionValue(value: IDataObject): string {
+	if (!value) return '';
+	if (value.text && typeof value.text === 'string') {
+		return stripHtml(value.text);
+	}
+	if (value.structured && Array.isArray(value.structured)) {
+		return formatStructuredItems(value.structured as IDataObject[]);
+	}
+	if (value.metrics && Array.isArray(value.metrics)) {
+		return formatMetricsItems(value.metrics as IDataObject[]);
+	}
+	return '';
+}
+
+/**
  * Extract clean text from a section content field object.
- * These have structure: { id, dashboard_id, title, type, value: { text: "<html>" }, citations: { ... } }
+ * These have structure: { id, dashboard_id, title, type, value: { text | structured | metrics }, citations: { ... } }
  */
 function formatSectionField(field: IDataObject): string {
 	const value = field.value as IDataObject | undefined;
 	if (!value) return 'N/A';
 
-	const text = value.text as string | undefined;
-	if (!text) return 'N/A';
-
-	return stripHtml(text) || 'N/A';
+	const result = formatSectionValue(value);
+	return result || 'N/A';
 }
 
 /**
- * Check if an object looks like a section content field (has id, title, type, value.text).
+ * Check if an object looks like a section content field (has type + value with text, structured, or metrics).
  */
 function isSectionContentField(obj: unknown): boolean {
 	if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
 	const o = obj as IDataObject;
-	return !!(o.type && o.value && typeof o.value === 'object' && (o.value as IDataObject).text);
+	if (!o.type || !o.value || typeof o.value !== 'object') return false;
+	const v = o.value as IDataObject;
+	return !!(v.text || v.structured || v.metrics);
 }
 
 /**
@@ -305,6 +361,10 @@ function extractTextFromValue(value: IDataObject | unknown): string {
 	if (typeof value === 'object' && value !== null) {
 		const obj = value as IDataObject;
 		
+		// Structured content and metrics (KPI-style sections)
+		if (obj.structured && Array.isArray(obj.structured)) return formatStructuredItems(obj.structured as IDataObject[]);
+		if (obj.metrics && Array.isArray(obj.metrics)) return formatMetricsItems(obj.metrics as IDataObject[]);
+
 		// Common text field names in section values
 		if (obj.text && typeof obj.text === 'string') return obj.text;
 		if (obj.content && typeof obj.content === 'string') return obj.content;
