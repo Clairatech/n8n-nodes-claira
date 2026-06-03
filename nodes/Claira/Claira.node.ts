@@ -28,6 +28,11 @@ import {
 	formatReportSectionsToMarkdown,
 	formatConversationToMarkdown,
 } from './shared/formatters';
+import {
+	buildFromTemplateRequestBody,
+	normalizeTriggeredRulesForCreatedReports,
+	unwrapResponseData,
+} from './shared/templateGeneration';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
 import { dealDescription } from './resources/deals';
@@ -713,7 +718,6 @@ export class Claira implements INodeType {
 					} else if (operation === 'setStatus') {
 						const dealId = this.getNodeParameter('dealId', i) as string;
 						const status = this.getNodeParameter('status', i) as string;
-						const moduleVersion = this.getNodeParameter('moduleVersion', i, 'latest') as string;
 
 						// First get the existing deal to preserve other data fields
 						const existingDealResponse = await clairaApiRequest.call(
@@ -743,241 +747,13 @@ export class Claira implements INodeType {
 							body,
 						);
 
-						// Check if we need to create reports from templates for this status
-						const createdReports: IDataObject[] = [];
-						try {
-							// Fetch module config to get deal_report_rules
-							const moduleConfig = await clairaModulesManagerRequest.call(
-								this,
-								'GET',
-								`/modules/credit_analysis/configs/${moduleVersion}/`,
-								clientId,
-							);
-
-							// Extract deal_report_rules from titles.ent_ids.deal_report_rules
-							const titles = (moduleConfig.titles as IDataObject) || {};
-							const entIds = (titles.ent_ids as IDataObject) || {};
-							const dealReportRules = (entIds.deal_report_rules as IDataObject) || {};
-							const statusRules = (dealReportRules[status] as IDataObject) || {};
-							const createReportsFromTemplates = (statusRules.createReportsFromTemplates as string[]) || [];
-
-							if (createReportsFromTemplates.length > 0) {
-								// Get all templates and existing dashboards for this deal
-								const templates = await clairaApiRequest.call(
-									this,
-									'GET',
-									'/credit_analysis/dashboard-templates/',
-									clientId,
-								);
-
-								const templatesList: IDataObject[] = Array.isArray(templates)
-									? (templates as IDataObject[])
-									: ((templates as IDataObject).data as IDataObject[]) || [];
-
-								const dashboardsResponse = await clairaApiRequest.call(
-									this,
-									'GET',
-									`/credit_analysis/dashboards/${dealId}/`,
-									clientId,
-								) as IDataObject;
-
-								const existingDashboards: IDataObject[] = Array.isArray(dashboardsResponse)
-									? (dashboardsResponse as IDataObject[])
-									: ((dashboardsResponse.data as IDataObject[]) || []);
-
-								const existingDashboardTitles = new Set(
-									existingDashboards.map((d: IDataObject) => d.title as string),
-								);
-
-								// Create reports from each template (by name)
-								for (const templateName of createReportsFromTemplates) {
-									const template = templatesList.find(
-										(t: IDataObject) => t.title === templateName,
-									) as IDataObject | undefined;
-
-									if (!template) {
-										if (this.logger) {
-											this.logger.warn(`[setStatus] Report Agent "${templateName}" not found, skipping`);
-										}
-										continue;
-									}
-
-									const tplValue = template.value as IDataObject | undefined;
-									const isOverview = tplValue?.is_overview === true;
-
-									// Skip non-overview templates if a dashboard with that title already exists
-									if (!isOverview && existingDashboardTitles.has(templateName)) {
-										continue;
-									}
-
-									let dashboard: IDataObject;
-
-									if (isOverview) {
-										// Use the existing default dashboard, or create one
-										const defaultDashboard = existingDashboards.find(
-											(d: IDataObject) => d.is_default === true,
-										);
-
-										if (defaultDashboard) {
-											dashboard = defaultDashboard;
-											const defaultId = String(dashboard.id || dashboard.dashboard_id);
-
-											// Remove all existing sections
-											const sectionsResponse = await clairaApiRequest.call(
-												this,
-												'GET',
-												`/credit_analysis/dashboard-sections/${defaultId}/`,
-												clientId,
-											) as IDataObject;
-
-											const existingSections: IDataObject[] = Array.isArray(sectionsResponse)
-												? (sectionsResponse as IDataObject[])
-												: ((sectionsResponse.data as IDataObject[]) || []);
-
-											for (const section of existingSections) {
-												const sectionId = section.id;
-												if (sectionId) {
-													await clairaApiRequest.call(
-														this,
-														'DELETE',
-														`/credit_analysis/dashboard-sections/${sectionId}/`,
-														clientId,
-													);
-												}
-											}
-										} else {
-											// Create a default Overview dashboard
-											const overviewBody: IDataObject = {
-												deal_id: dealId,
-												title: 'Overview',
-												public: true,
-												is_default: true,
-											};
-
-											const overviewResponse = await clairaApiRequest.call(
-												this,
-												'POST',
-												'/credit_analysis/dashboards/',
-												clientId,
-												overviewBody,
-											) as IDataObject;
-
-											dashboard = (overviewResponse.data as IDataObject) || overviewResponse;
-										}
-									} else {
-										// Create a new dashboard
-										const dashboardBody: IDataObject = {
-											deal_id: dealId,
-											title: (template.title as string) || 'Report',
-											public: true,
-											is_default: false,
-										};
-
-										const dashboardResponse = await clairaApiRequest.call(
-											this,
-											'POST',
-											'/credit_analysis/dashboards/',
-											clientId,
-											dashboardBody,
-										) as IDataObject;
-
-										dashboard = (dashboardResponse.data as IDataObject) || dashboardResponse;
-									}
-
-									const currentDashboardId = String(dashboard.id || dashboard.dashboard_id);
-									if (!currentDashboardId || currentDashboardId === 'undefined' || currentDashboardId === 'null') {
-										continue;
-									}
-
-									const templateSections = [...((tplValue?.sections as IDataObject[]) || [])].reverse();
-									const createdSectionIds: string[] = [];
-
-									if (templateSections.length > 0) {
-										for (let index = 0; index < templateSections.length; index++) {
-											const sectionTemplate = templateSections[index];
-											const sectionBody: IDataObject = {
-												...sectionTemplate,
-												dashboard_id: currentDashboardId,
-												position: index + 1,
-												value: sectionTemplate.value !== undefined ? sectionTemplate.value : {},
-											};
-
-											delete sectionBody.id;
-											delete sectionBody.template_id;
-											delete sectionBody.last_modified_by;
-											delete sectionBody.last_modified_at;
-
-											if (sectionBody.context_settings) {
-												const contextSettings = sectionBody.context_settings as IDataObject;
-												sectionBody.use_documents = contextSettings.use_documents;
-												sectionBody.use_spreadsheets = contextSettings.use_spreadsheets;
-												sectionBody.use_sections = contextSettings.use_sections;
-												sectionBody.document_ids = contextSettings.document_ids;
-												sectionBody.start_date = contextSettings.start_date;
-												sectionBody.end_date = contextSettings.end_date;
-												delete sectionBody.context_settings;
-											}
-
-											const sectionResponse = await clairaApiRequest.call(
-												this,
-												'POST',
-												'/credit_analysis/dashboard-sections/',
-												clientId,
-												sectionBody,
-											) as IDataObject;
-
-											const createdSection = (sectionResponse.data as IDataObject) || sectionResponse;
-											const createdId = createdSection.id;
-											if (createdId) {
-												createdSectionIds.push(String(createdId));
-											}
-										}
-									}
-
-									// Create preset for section order and column layout
-									if (createdSectionIds.length > 0) {
-										const columns = (tplValue?.columns as number) || 1;
-										const presetBody: IDataObject = {
-											name: currentDashboardId,
-											is_public: true,
-											preset_type: 'deal_analysis_main',
-											data: [],
-											config: {
-												rows: {
-													order: [...createdSectionIds].reverse(),
-													itemsPerRow: columns,
-												},
-											},
-										};
-
-										await clairaAuthRequest.call(
-											this,
-											'POST',
-											`/clients/${clientId}/credit_analysis/presets/`,
-											presetBody,
-										);
-									}
-
-									createdReports.push({
-										template_id: template.id,
-										template_name: templateName,
-										dashboard_id: currentDashboardId,
-										title: dashboard.title,
-									});
-								}
-							}
-						} catch (error) {
-							// Log but don't fail if report creation fails
-							if (this.logger) {
-								this.logger.warn('[setStatus] Failed to create reports from templates', {
-									error: error instanceof Error ? error.message : String(error),
-								});
-							}
-						}
+						const updatedDeal = unwrapResponseData(updateResponse as IDataObject);
+						const triggeredRules = (updatedDeal.triggered_rules as IDataObject[]) || [];
 
 						responseData = {
 							...(updateResponse as IDataObject),
-							created_reports: createdReports,
+							triggered_rules: triggeredRules,
+							created_reports: normalizeTriggeredRulesForCreatedReports(triggeredRules),
 						};
 					} else if (operation === 'getStatusOptions') {
 						const moduleVersion = this.getNodeParameter('moduleVersion', i, 'latest') as string;
@@ -1432,206 +1208,25 @@ export class Claira implements INodeType {
 					} else if (operation === 'createFromTemplate') {
 						const templateId = this.getNodeParameter('templateId', i) as string;
 						const dealId = this.getNodeParameter('dealId', i) as string;
-						const title = this.getNodeParameter('title', i, '') as string;
-						const public_ = this.getNodeParameter('public', i, true) as boolean;
-						const isDefault = this.getNodeParameter('isDefault', i, false) as boolean;
-
-						// Get all templates and filter locally by ID
-						const templates = await clairaApiRequest.call(
+						const fromTemplateResponse = await clairaApiRequest.call(
 							this,
-							'GET',
-							'/credit_analysis/dashboard-templates/',
+							'POST',
+							'/credit_analysis/dashboards/from_template/',
 							clientId,
+							buildFromTemplateRequestBody(dealId, templateId, true),
 						);
+						const fromTemplateData = unwrapResponseData(fromTemplateResponse as IDataObject);
 
-						// Extract templates list from response
-						const templatesList: IDataObject[] = Array.isArray(templates)
-							? (templates as IDataObject[])
-							: ((templates as IDataObject).data as IDataObject[]) || [];
-
-						// Find template by ID
-						const template = templatesList.find(
-							(t: IDataObject) => t.id === templateId,
-						) as IDataObject | undefined;
-
-						if (!template) {
-							throw new NodeOperationError(
-								this.getNode(),
-								`Report Agent with ID ${templateId} not found`,
-								{ itemIndex: i },
-							);
-						}
-
-						// Check the template's is_overview flag to decide behavior
-						const templateValue = template.value as IDataObject | undefined;
-						const overviewDashboard = templateValue?.is_overview === true;
-
-						let dashboard: IDataObject;
-
-						if (overviewDashboard) {
-							// Find the default (Overview) dashboard for this deal
-							const dashboardsResponse = await clairaApiRequest.call(
-								this,
-								'GET',
-								`/credit_analysis/dashboards/${dealId}/`,
-								clientId,
-							) as IDataObject;
-
-							const dashboardsList: IDataObject[] = Array.isArray(dashboardsResponse)
-								? (dashboardsResponse as IDataObject[])
-								: ((dashboardsResponse.data as IDataObject[]) || []);
-
-							const defaultDashboard = dashboardsList.find(
-								(d: IDataObject) => d.is_default === true,
-							);
-
-							if (!defaultDashboard) {
-								// Create a default Overview dashboard if none exists
-								const overviewBody: IDataObject = {
-									deal_id: dealId,
-									title: 'Overview',
-									public: true,
-									is_default: true,
-								};
-
-								const overviewResponse = await clairaApiRequest.call(
-									this,
-									'POST',
-									'/credit_analysis/dashboards/',
-									clientId,
-									overviewBody,
-								) as IDataObject;
-
-								dashboard = (overviewResponse.data as IDataObject) || overviewResponse;
-							} else {
-								dashboard = defaultDashboard;
-
-								// Remove all existing sections from the default dashboard
-								const defaultDashboardId = String(dashboard.id || dashboard.dashboard_id);
-								const sectionsResponse = await clairaApiRequest.call(
-									this,
-									'GET',
-									`/credit_analysis/dashboard-sections/${defaultDashboardId}/`,
-									clientId,
-								) as IDataObject;
-
-								const existingSections: IDataObject[] = Array.isArray(sectionsResponse)
-									? (sectionsResponse as IDataObject[])
-									: ((sectionsResponse.data as IDataObject[]) || []);
-
-								for (const section of existingSections) {
-									const sectionId = section.id;
-									if (sectionId) {
-										await clairaApiRequest.call(
-											this,
-											'DELETE',
-											`/credit_analysis/dashboard-sections/${sectionId}/`,
-											clientId,
-										);
-									}
-								}
-							}
-						} else {
-							// Create a new dashboard
-							const dashboardBody: IDataObject = {
-								deal_id: dealId,
-								title: title || template.title || 'Report',
-								public: public_,
-								is_default: isDefault,
-							};
-
-							const dashboardResponse = await clairaApiRequest.call(
-								this,
-								'POST',
-								'/credit_analysis/dashboards/',
-								clientId,
-								dashboardBody,
-							) as IDataObject;
-
-							dashboard = (dashboardResponse.data as IDataObject) || dashboardResponse;
-						}
-
-						const dashboardId = String(dashboard.id || dashboard.dashboard_id);
-						if (!dashboardId || dashboardId === 'undefined' || dashboardId === 'null') {
-							throw new NodeOperationError(
-								this.getNode(),
-								'Failed to get dashboard ID from response',
-								{ itemIndex: i },
-							);
-						}
-
-						const templateSections = [...(((template.value as IDataObject)?.sections as IDataObject[]) || [])].reverse();
-						const createdSectionIds: string[] = [];
-
-						if (templateSections.length > 0) {
-							for (let index = 0; index < templateSections.length; index++) {
-								const sectionTemplate = templateSections[index];
-								const sectionBody: IDataObject = {
-									...sectionTemplate,
-									dashboard_id: dashboardId,
-									position: index + 1,
-									value: sectionTemplate.value !== undefined ? sectionTemplate.value : {},
-								};
-
-								// Remove template-specific fields that shouldn't be sent
-								delete sectionBody.id;
-								delete sectionBody.template_id;
-								delete sectionBody.last_modified_by;
-								delete sectionBody.last_modified_at;
-
-								// Handle context_settings - flatten if it exists
-								if (sectionBody.context_settings) {
-									const contextSettings = sectionBody.context_settings as IDataObject;
-									sectionBody.use_documents = contextSettings.use_documents;
-									sectionBody.use_spreadsheets = contextSettings.use_spreadsheets;
-									sectionBody.use_sections = contextSettings.use_sections;
-									sectionBody.document_ids = contextSettings.document_ids;
-									sectionBody.start_date = contextSettings.start_date;
-									sectionBody.end_date = contextSettings.end_date;
-									delete sectionBody.context_settings;
-								}
-
-								const sectionResponse = await clairaApiRequest.call(
-									this,
-									'POST',
-									'/credit_analysis/dashboard-sections/',
-									clientId,
-									sectionBody,
-								) as IDataObject;
-
-								const createdSection = (sectionResponse.data as IDataObject) || sectionResponse;
-								const createdId = createdSection.id;
-								if (createdId) {
-									createdSectionIds.push(String(createdId));
-								}
-							}
-						}
-
-						// Create a preset to preserve section order and column layout
-						if (createdSectionIds.length > 0) {
-							const columns = (templateValue?.columns as number) || 1;
-							const presetBody: IDataObject = {
-								name: dashboardId,
-								is_public: true,
-								preset_type: 'deal_analysis_main',
-								data: [],
-								config: {
-									rows: {
-										order: [...createdSectionIds].reverse(),
-										itemsPerRow: columns,
-									},
-								},
-							};
-
+						if (fromTemplateData.preset_created === false && fromTemplateData.preset_payload) {
 							await clairaAuthRequest.call(
 								this,
 								'POST',
 								`/clients/${clientId}/credit_analysis/presets/`,
-								presetBody,
+								fromTemplateData.preset_payload as IDataObject,
 							);
 						}
 
-						responseData = dashboard;
+						responseData = fromTemplateData;
 					}
 				} else if (resource === 'superAdmin') {
 					if (operation === 'getClients') {

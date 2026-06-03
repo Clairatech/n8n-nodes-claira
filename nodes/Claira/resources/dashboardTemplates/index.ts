@@ -36,7 +36,7 @@ export const dashboardTemplateDescription: INodeProperties[] = [
 				routing: {
 					request: {
 						method: 'POST',
-						url: '=/credit_analysis/dashboards/',
+						url: '=/credit_analysis/dashboards/from_template/',
 					},
 				},
 			},
