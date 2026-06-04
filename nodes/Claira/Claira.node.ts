@@ -33,6 +33,7 @@ import {
 	normalizeTriggeredRulesForCreatedReports,
 	unwrapResponseData,
 } from './shared/templateGeneration';
+import { partitionReportsForUpdate } from './shared/reportUpdates';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
 import { dealDescription } from './resources/deals';
@@ -933,6 +934,55 @@ export class Claira implements INodeType {
 						}
 
 						responseData = reports;
+					} else if (operation === 'updateReports') {
+						const dealId = this.getNodeParameter('dealId', i) as string;
+
+						const reportsResponse = await clairaApiRequest.call(
+							this,
+							'GET',
+							`/credit_analysis/dashboards/${dealId}/`,
+							clientId,
+						);
+						const reports = Array.isArray(reportsResponse)
+							? reportsResponse as IDataObject[]
+							: Array.isArray((reportsResponse as IDataObject).data)
+								? (reportsResponse as IDataObject).data as IDataObject[]
+								: [];
+						const { eligibleReports, skippedReports } = partitionReportsForUpdate(reports);
+						const updatedReports: IDataObject[] = [];
+
+						for (const report of eligibleReports) {
+							const reportId = report.id as string;
+							const updateResponse = await clairaApiRequest.call(
+								this,
+								'POST',
+								`/credit_analysis/dashboards/${reportId}/regenerate/`,
+								clientId,
+							);
+							const updateData = unwrapResponseData(updateResponse as IDataObject);
+
+							updatedReports.push({
+								report_id: reportId,
+								report_title: report.title || 'Untitled Report',
+								...updateData,
+							});
+						}
+
+						responseData = {
+							deal_id: dealId,
+							total_reports: reports.length,
+							eligible_reports_count: eligibleReports.length,
+							updated_reports_count: updatedReports.length,
+							skipped_reports_count: skippedReports.length,
+							updated_reports: updatedReports,
+							skipped_reports: skippedReports.map(({ report, skip_reason }) => ({
+								report_id: report.id || null,
+								report_title: report.title || 'Untitled Report',
+								skip_reason,
+								is_default: report.is_default === true,
+								is_reviewed: report.is_reviewed === true,
+							})),
+						};
 					} else if (operation === 'getReportSections') {
 						const reportId = this.getNodeParameter('reportId', i) as string;
 

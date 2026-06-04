@@ -10,6 +10,7 @@ import { dealCreateActivityDescription } from './createActivity';
 import { dealGetReportsDescription } from './getReports';
 import { dealGetReportSectionsDescription } from './getReportSections';
 import { dealAskQuestionDescription } from './askQuestion';
+import { dealUpdateReportsDescription } from './updateReports';
 
 const showOnlyForDeals = {
 	resource: ['deals'],
@@ -114,6 +115,12 @@ export const dealDescription: INodeProperties[] = [
 				action: 'Set deal status',
 				description: 'Set the status of a deal',
 			},
+			{
+				name: 'Update Eligible Reports',
+				value: 'updateReports',
+				action: 'Update eligible reports',
+				description: 'Trigger Update Report for all non-default, non-reviewed reports in a deal',
+			},
 		],
 		default: 'getAll',
 	},
@@ -129,4 +136,5 @@ export const dealDescription: INodeProperties[] = [
 	...dealGetReportsDescription,
 	...dealGetReportSectionsDescription,
 	...dealAskQuestionDescription,
+	...dealUpdateReportsDescription,
 ];
