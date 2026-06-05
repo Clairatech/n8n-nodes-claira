@@ -6,10 +6,6 @@ export interface ReportUpdateCandidate {
 }
 
 export function getReportSkipReason(report: IDataObject): string | undefined {
-	if (report.is_default === true) {
-		return 'default_report';
-	}
-
 	if (report.is_reviewed === true) {
 		return 'reviewed_report';
 	}
