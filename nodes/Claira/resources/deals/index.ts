@@ -10,6 +10,7 @@ import { dealCreateActivityDescription } from './createActivity';
 import { dealGetReportsDescription } from './getReports';
 import { dealGetReportSectionsDescription } from './getReportSections';
 import { dealAskQuestionDescription } from './askQuestion';
+import { dealAskPipelineQuestionDescription } from './askPipelineQuestion';
 import { dealUpdateReportsDescription } from './updateReports';
 
 const showOnlyForDeals = {
@@ -54,6 +55,12 @@ export const dealDescription: INodeProperties[] = [
 				value: 'askQuestion',
 				action: 'Ask a deal question',
 				description: 'Ask a question about a deal and wait for the AI response',
+			},
+			{
+				name: 'Ask Pipeline Question',
+				value: 'askPipelineQuestion',
+				action: 'Ask a pipeline question',
+				description: 'Ask an aggregate/pipeline question across all deals and wait for the AI response',
 			},
 			{
 				name: 'Create',
@@ -136,5 +143,6 @@ export const dealDescription: INodeProperties[] = [
 	...dealGetReportsDescription,
 	...dealGetReportSectionsDescription,
 	...dealAskQuestionDescription,
+	...dealAskPipelineQuestionDescription,
 	...dealUpdateReportsDescription,
 ];

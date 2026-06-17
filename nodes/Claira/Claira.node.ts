@@ -1132,6 +1132,132 @@ export class Claira implements INodeType {
 							thinking_steps: aiResponse.thinking_steps,
 							context_settings: aiResponse.context_settings,
 						};
+					} else if (operation === 'askPipelineQuestion') {
+						const question = this.getNodeParameter('question', i) as string;
+						const contextOptions = this.getNodeParameter('pipelineContextOptions', i, {}) as IDataObject;
+						const pollingOptions = this.getNodeParameter('pollingOptions', i, {}) as IDataObject;
+
+						const pollingInterval = ((pollingOptions.pollingInterval as number) || 3) * 1000;
+						const timeout = ((pollingOptions.timeout as number) || 540) * 1000;
+
+						// Build request body (pipeline scope: no deal_id, no document/section context)
+						const body: IDataObject = {
+							text: question,
+						};
+
+						if (contextOptions.useWebSearch !== undefined) {
+							body.use_web_search = contextOptions.useWebSearch;
+						}
+						if (contextOptions.model) {
+							body.model = contextOptions.model;
+						}
+						if (contextOptions.trustedDomains) {
+							const trustedDomainsStr = contextOptions.trustedDomains as string;
+							body.trusted_domains = trustedDomainsStr
+								.split(',')
+								.map((d: string) => d.trim())
+								.filter((d: string) => d);
+						}
+
+						// POST the question to the pipeline conversation endpoint
+						const postResponse = await clairaApiRequest.call(
+							this,
+							'POST',
+							'/pipeline_conversations/',
+							clientId,
+							body,
+						);
+
+						const postedMessage = (postResponse.data as IDataObject) || postResponse;
+						const postedMessageId = postedMessage.id as string;
+						const postedCreatedBy = postedMessage.created_by as string | undefined;
+
+						if (this.logger) {
+							this.logger.debug('[Ask Pipeline Question] Posted question', {
+								messageId: postedMessageId,
+								createdBy: postedCreatedBy,
+								question: question.substring(0, 100),
+							});
+						}
+
+						// Poll for the AI answer. Pipeline conversations are client-wide and the email
+						// agent posts every question under the same service-account identity, so we
+						// correlate strictly by parent_conversation_id: the backend tags each AI answer
+						// with the id of the question that produced it. This prevents cross-talk when
+						// multiple users email the agent about the same client concurrently.
+						const startTime = Date.now();
+						let aiResponse: IDataObject | undefined;
+
+						while (Date.now() - startTime < timeout) {
+							// Wait before polling
+							await new Promise((resolve) => setTimeout(resolve, pollingInterval));
+
+							const pollQs: IDataObject = {
+								parent_conversation_id: postedMessageId,
+								'created_at:desc': '',
+								page_size: 1,
+							};
+
+							// Fetch only the AI answer linked to our specific question
+							const getResponse = await clairaApiRequest.call(
+								this,
+								'GET',
+								'/pipeline_conversations/',
+								clientId,
+								undefined,
+								pollQs,
+							);
+
+							const data = (getResponse.data as IDataObject) || getResponse;
+							const conversations = (data.conversations as IDataObject[]) || [];
+
+							if (this.logger) {
+								this.logger.debug('[Ask Pipeline Question] Polling for answer', {
+									questionId: postedMessageId,
+									matches: conversations.length,
+									elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
+								});
+							}
+
+							// The endpoint already scopes to ai_generated answers linked to our
+							// question; double-check the flag defensively.
+							aiResponse = conversations.find((conv) => conv.ai_generated === true);
+
+							if (aiResponse) {
+								break;
+							}
+						}
+
+						if (!aiResponse) {
+							throw new NodeOperationError(
+								this.getNode(),
+								`Timed out waiting for AI response after ${timeout / 1000} seconds. The question was posted successfully (message ID: ${postedMessageId}). You can try fetching the conversation later.`,
+								{ itemIndex: i },
+							);
+						}
+
+						// Parse citations if stored as string
+						let citations = aiResponse.citations;
+						if (typeof citations === 'string') {
+							try {
+								citations = JSON.parse(citations);
+							} catch {
+								// keep as string
+							}
+						}
+
+						responseData = {
+							question,
+							question_id: postedMessageId,
+							question_created_at: postedMessage.created_at,
+							answer: aiResponse.text,
+							answer_id: aiResponse.id,
+							answer_created_at: aiResponse.created_at,
+							response_time_ms: aiResponse.response_time_ms,
+							citations,
+							thinking_steps: aiResponse.thinking_steps,
+							context_settings: aiResponse.context_settings,
+						};
 					}
 
 					// Apply markdown formatting if requested
@@ -1164,6 +1290,8 @@ export class Claira implements INodeType {
 							const sections = Array.isArray(responseData) ? responseData : [responseData];
 							markdownContent = formatReportSectionsToMarkdown(sections as IDataObject[]);
 						} else if (operation === 'askQuestion') {
+							markdownContent = formatConversationToMarkdown(responseData as IDataObject);
+						} else if (operation === 'askPipelineQuestion') {
 							markdownContent = formatConversationToMarkdown(responseData as IDataObject);
 						}
 
