@@ -1055,7 +1055,11 @@ export class Claira implements INodeType {
 							});
 						}
 
-						// Poll for AI response
+						// Poll for the AI answer. The email agent posts every question under the same
+						// service-account identity and may process several conversations for the same
+						// deal concurrently, so we correlate strictly by parent_conversation_id: the
+						// backend tags each AI answer with the id of the question that produced it.
+						// This prevents returning another conversation's latest answer.
 						const startTime = Date.now();
 						let aiResponse: IDataObject | undefined;
 
@@ -1063,38 +1067,35 @@ export class Claira implements INodeType {
 							// Wait before polling
 							await new Promise((resolve) => setTimeout(resolve, pollingInterval));
 
-							// Fetch conversations sorted by newest first
+							// Fetch only the AI answer linked to our specific question
 							const getResponse = await clairaApiRequest.call(
 								this,
 								'GET',
 								`/conversations/${dealId}/`,
 								clientId,
 								undefined,
-								{ 'created_at:desc': '', page_size: 5 },
+								{
+									parent_conversation_id: postedMessageId,
+									'created_at:desc': '',
+									page_size: 1,
+								},
 							);
 
 							const data = (getResponse.data as IDataObject) || getResponse;
 							const conversations = (data.conversations as IDataObject[]) || [];
 
 							if (this.logger) {
-								this.logger.debug('[Ask Question] Polling conversations', {
-									count: conversations.length,
+								this.logger.debug('[Ask Question] Polling for answer', {
+									dealId,
+									questionId: postedMessageId,
+									matches: conversations.length,
 									elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}s`,
 								});
 							}
 
-							// Look for an AI-generated response that came after our posted message
-							for (const conv of conversations) {
-								if (conv.ai_generated === true) {
-									// Found the AI response
-									aiResponse = conv;
-									break;
-								}
-								if (conv.id === postedMessageId) {
-									// We've reached our question without finding an AI response yet — keep polling
-									break;
-								}
-							}
+							// The endpoint already scopes to ai_generated answers linked to our
+							// question; double-check the flag defensively.
+							aiResponse = conversations.find((conv) => conv.ai_generated === true);
 
 							if (aiResponse) {
 								break;
