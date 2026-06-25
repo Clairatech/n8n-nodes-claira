@@ -129,6 +129,20 @@ export const documentGetManyDescription: INodeProperties[] = [
 					},
 				},
 			},
+			{
+				displayName: 'Status IDs (In)',
+				name: 'status_id.in',
+				type: 'string',
+				default: '',
+				description:
+					'Filter by a comma-separated list of document status IDs (e.g. "processing,reprocessing,indexing"). Returns documents whose status matches any of the values.',
+				routing: {
+					send: {
+						type: 'query',
+						property: 'status_id.in',
+					},
+				},
+			},
 		],
 	},
 ];
