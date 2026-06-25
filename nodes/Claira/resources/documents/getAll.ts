@@ -130,8 +130,12 @@ export const documentGetManyDescription: INodeProperties[] = [
 				},
 			},
 			{
+				// NOTE: keep this name dot-free. n8n treats a dot in a collection
+				// option name as a nested path (lodash get/set), which collides with
+				// the 'status_id' option above and renders as "[object Object]".
+				// The dotted query param is set via routing.send.property instead.
 				displayName: 'Status IDs (In)',
-				name: 'status_id.in',
+				name: 'status_id_in',
 				type: 'string',
 				default: '',
 				description:
