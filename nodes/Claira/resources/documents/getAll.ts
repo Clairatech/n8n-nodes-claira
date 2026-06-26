@@ -130,22 +130,18 @@ export const documentGetManyDescription: INodeProperties[] = [
 				},
 			},
 			{
-				// NOTE: keep this name dot-free. n8n treats a dot in a collection
-				// option name as a nested path (lodash get/set), which collides with
-				// the 'status_id' option above and renders as "[object Object]".
-				// The dotted query param is set via routing.send.property instead.
+				// NOTE: keep this name dot-free. n8n mangles a collection option name
+				// that contains a dot (it collides with the flat 'status_id' option
+				// above and renders as "[object Object]"). This node builds the query
+				// string imperatively in Claira.node.ts (declarative `routing` is
+				// ignored for it), so the execute() handler remaps this `status_id_in`
+				// key to the backend's `status_id.in` operator param.
 				displayName: 'Status IDs (In)',
 				name: 'status_id_in',
 				type: 'string',
 				default: '',
 				description:
 					'Filter by a comma-separated list of document status IDs (e.g. "processing,reprocessing,indexing"). Returns documents whose status matches any of the values.',
-				routing: {
-					send: {
-						type: 'query',
-						property: 'status_id.in',
-					},
-				},
 			},
 		],
 	},

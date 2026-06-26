@@ -159,6 +159,18 @@ export class Claira implements INodeType {
 						const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
 						const qs: IDataObject = { ...filters };
 
+						// The "Status IDs (In)" filter is stored under a dot-free key
+						// (status_id_in) because n8n mangles a collection option name that
+						// contains a dot. The backend's list endpoint expects the `.in`
+						// operator query param, so translate the key before sending.
+						if (qs.status_id_in !== undefined) {
+							const statusIdIn = qs.status_id_in;
+							delete qs.status_id_in;
+							if (statusIdIn !== null && statusIdIn !== '') {
+								qs['status_id.in'] = statusIdIn;
+							}
+						}
+
 						if (!returnAll) {
 							const limit = this.getNodeParameter('limit', i, 50) as number;
 							qs.page_size = limit;
