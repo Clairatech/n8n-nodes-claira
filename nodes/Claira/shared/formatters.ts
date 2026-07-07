@@ -631,3 +631,17 @@ export function formatCreatedActivityToMarkdown(activity: IDataObject): string {
 
 	return md;
 }
+
+export function formatFirmResolveToMarkdown(result: IDataObject): string {
+	const status = (result?.status as string) || 'none';
+	if (status === 'matched') {
+		const firm = (result.firm as IDataObject) || {};
+		return `# Firm Resolution: MATCHED\n- **Display Name:** ${firm.display_name}\n- **ID:** ${firm.id}\n- **Normalized Name:** ${firm.name}`;
+	}
+	if (status === 'ambiguous') {
+		const candidates = (result.candidates as IDataObject[]) || [];
+		const lines = candidates.map((f) => `- ${f.display_name} (ID: ${f.id})`).join('\n');
+		return `# Firm Resolution: AMBIGUOUS\nMultiple firms match. Ask the user to disambiguate:\n${lines}`;
+	}
+	return `# Firm Resolution: NONE\nNo existing firm matched. Create a new firm.`;
+}

@@ -27,6 +27,7 @@ import {
 	formatReportsToMarkdown,
 	formatReportSectionsToMarkdown,
 	formatConversationToMarkdown,
+	formatFirmResolveToMarkdown,
 } from './shared/formatters';
 import {
 	buildFromTemplateRequestBody,
@@ -36,7 +37,9 @@ import {
 import { partitionReportsForUpdate } from './shared/reportUpdates';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
+import { contactDescription } from './resources/contacts';
 import { dealDescription } from './resources/deals';
+import { firmDescription } from './resources/firms';
 import { folderDescription } from './resources/folders';
 import { financialDataDescription } from './resources/financialData';
 import { dashboardTemplateDescription } from './resources/dashboardTemplates';
@@ -82,6 +85,11 @@ export class Claira implements INodeType {
 							description: 'Authentication operations',
 						},
 						{
+							name: 'Contact',
+							value: 'contacts',
+							description: 'Contact operations (Credit Analysis)',
+						},
+						{
 							name: 'Deal',
 							value: 'deals',
 							description: 'Deal operations (Credit Analysis)',
@@ -95,6 +103,11 @@ export class Claira implements INodeType {
 							name: 'Financial Data',
 							value: 'financialData',
 							description: 'Financial data operations',
+						},
+						{
+							name: 'Firm',
+							value: 'firms',
+							description: 'Firm operations (Credit Analysis)',
 						},
 						{
 							name: 'Folder',
@@ -128,8 +141,10 @@ export class Claira implements INodeType {
 					},
 				},
 			...authDescription,
+			...contactDescription,
 			...documentDescription,
 			...dealDescription,
+			...firmDescription,
 			...folderDescription,
 			...financialDataDescription,
 			...dashboardTemplateDescription,
@@ -1157,6 +1172,10 @@ export class Claira implements INodeType {
 						const body: IDataObject = {
 							text: question,
 						};
+						const chatScope = this.getNodeParameter('chatScope', i, 'deals') as string;
+						if (chatScope === 'firms') {
+							body.chat_scope = 'firms';
+						}
 
 						if (contextOptions.useWebSearch !== undefined) {
 							body.use_web_search = contextOptions.useWebSearch;
@@ -1311,6 +1330,99 @@ export class Claira implements INodeType {
 						if (markdownContent) {
 							responseData = { markdown: markdownContent };
 						}
+					}
+				} else if (resource === 'firms') {
+					if (operation === 'resolve') {
+						const firmName = this.getNodeParameter('firmName', i) as string;
+						responseData = await clairaApiRequest.call(this, 'GET', '/credit_analysis/firms/resolve/', clientId, undefined, { name: firmName });
+					} else if (operation === 'create') {
+						const displayName = this.getNodeParameter('displayName', i) as string;
+						const firmType = this.getNodeParameter('firmType', i, '') as string;
+						const body: IDataObject = { display_name: displayName };
+						if (firmType) body.type = firmType;
+						try {
+							responseData = await clairaApiRequest.call(this, 'POST', '/credit_analysis/firms/', clientId, body);
+						} catch (error) {
+							// Resolve-on-409: a same-normalized-name firm already exists -> reuse it.
+							const status = (error as { statusCode?: number })?.statusCode;
+							if (status === 409) {
+								const resolved = await clairaApiRequest.call(this, 'GET', '/credit_analysis/firms/resolve/', clientId, undefined, { name: displayName });
+								if ((resolved.data as IDataObject)?.status === 'matched') {
+									responseData = { data: (resolved.data as IDataObject).firm };
+								} else {
+									throw error;
+								}
+							} else {
+								throw error;
+							}
+						}
+					} else if (operation === 'update') {
+						const firmId = this.getNodeParameter('firmId', i) as string;
+						const updateDisplayName = this.getNodeParameter('updateDisplayName', i, '') as string;
+						const firmType = this.getNodeParameter('firmType', i, '') as string;
+						const body: IDataObject = {};
+						if (updateDisplayName) body.display_name = updateDisplayName;
+						if (firmType) body.type = firmType;
+						responseData = await clairaApiRequest.call(this, 'PATCH', `/credit_analysis/firms/${firmId}/`, clientId, body);
+					} else if (operation === 'linkDeal') {
+						const firmId = this.getNodeParameter('firmId', i) as string;
+						const dealId = this.getNodeParameter('dealId', i) as string;
+						responseData = await clairaApiRequest.call(this, 'POST', `/credit_analysis/firms/${firmId}/deals/${dealId}/`, clientId);
+					} else if (operation === 'createActivity') {
+						const firmId = this.getNodeParameter('firmId', i) as string;
+						const body: IDataObject = { title: this.getNodeParameter('activityTitle', i) as string };
+						const description = this.getNodeParameter('activityDescription', i, '') as string;
+						const dealId = this.getNodeParameter('dealId', i, '') as string;
+						const contactIds = this.getNodeParameter('contactIds', i, '') as string;
+						if (description) body.description = description;
+						if (dealId) body.deal_id = dealId;
+						if (contactIds) body.contact_ids = contactIds.split(',').map((s) => s.trim()).filter((s) => s);
+						responseData = await clairaApiRequest.call(this, 'POST', `/credit_analysis/firms/${firmId}/activities/`, clientId, body);
+					}
+					if (this.getNodeParameter('outputFormat', i, 'json') === 'markdown' && operation === 'resolve' && responseData !== undefined) {
+						responseData = { markdown: formatFirmResolveToMarkdown((responseData as IDataObject).data as IDataObject) };
+					}
+				} else if (resource === 'contacts') {
+					if (operation === 'getAll') {
+						const email = (this.getNodeParameter('email', i, '') as string).toLowerCase();
+						const fullName = this.getNodeParameter('fullName', i, '') as string;
+						const qs: IDataObject = {};
+						if (email) qs['email.ilike'] = email;
+						if (fullName) qs['full_name.ilike'] = fullName;
+						responseData = await clairaApiRequest.call(this, 'GET', '/credit_analysis/firms/contacts/', clientId, undefined, qs);
+					} else if (operation === 'create') {
+						const firmId = this.getNodeParameter('firmId', i) as string;
+						const email = (this.getNodeParameter('contactEmail', i) as string).toLowerCase();
+						// Idempotent: reuse an existing contact with this email in the firm.
+						const existing = await clairaApiRequest.call(this, 'GET', '/credit_analysis/firms/contacts/', clientId, undefined, { 'email.ilike': email });
+						const found = ((existing.contacts as IDataObject[]) || (((existing.data as IDataObject)?.contacts) as IDataObject[]) || [])
+							.find((c) => (c.email as string)?.toLowerCase() === email && String(c.firm_id) === String(firmId));
+						if (found) {
+							responseData = { data: found };
+						} else {
+							const body: IDataObject = { full_name: this.getNodeParameter('contactFullName', i) as string, email };
+							responseData = await clairaApiRequest.call(this, 'POST', `/credit_analysis/firms/${firmId}/contacts/`, clientId, body);
+						}
+					} else if (operation === 'update') {
+						const firmId = this.getNodeParameter('firmId', i) as string;
+						const contactId = this.getNodeParameter('contactId', i) as string;
+						const noteContent = this.getNodeParameter('noteContent', i, '') as string;
+						const contactTitle = this.getNodeParameter('contactTitle', i, '') as string;
+						const data: IDataObject = {};
+						if (noteContent) data.notes = noteContent;
+						if (contactTitle) data.title = contactTitle;
+						const body: IDataObject = { data };
+						if (noteContent) body.replace_notes = false; // append, never overwrite
+						responseData = await clairaApiRequest.call(this, 'PATCH', `/credit_analysis/firms/${firmId}/contacts/${contactId}/`, clientId, body);
+					} else if (operation === 'createActivity') {
+						const firmId = this.getNodeParameter('firmId', i) as string;
+						const contactId = this.getNodeParameter('contactId', i) as string;
+						const body: IDataObject = { title: this.getNodeParameter('activityTitle', i) as string };
+						const description = this.getNodeParameter('activityDescription', i, '') as string;
+						const dealId = this.getNodeParameter('dealId', i, '') as string;
+						if (description) body.description = description;
+						if (dealId) body.deal_id = dealId;
+						responseData = await clairaApiRequest.call(this, 'POST', `/credit_analysis/firms/${firmId}/contacts/${contactId}/activities/`, clientId, body);
 					}
 				} else if (resource === 'folders') {
 					if (operation === 'getAll') {
