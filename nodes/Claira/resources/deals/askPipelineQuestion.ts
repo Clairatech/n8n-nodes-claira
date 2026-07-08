@@ -21,6 +21,28 @@ export const dealAskPipelineQuestionDescription: INodeProperties[] = [
 		description: 'The pipeline/aggregate question to ask across all deals',
 	},
 	{
+		displayName: 'Chat Scope',
+		name: 'chatScope',
+		type: 'options',
+		options: [
+			{
+				name: 'Deals',
+				value: 'deals',
+				description: 'Answer the question across the deal pipeline',
+			},
+			{
+				name: 'Firms',
+				value: 'firms',
+				description: 'Answer the question across the firms the client is tracking',
+			},
+		],
+		default: 'deals',
+		description: 'Which knowledge scope the pipeline agent should answer over',
+		displayOptions: {
+			show: showOnlyForPipelineAskQuestion,
+		},
+	},
+	{
 		displayName: 'Context Options',
 		name: 'pipelineContextOptions',
 		type: 'collection',
