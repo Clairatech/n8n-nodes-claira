@@ -7,6 +7,7 @@ import { dealSetStatusDescription } from './setStatus';
 import { dealGetStatusOptionsDescription } from './getStatusOptions';
 import { dealGetActivitiesDescription } from './getActivities';
 import { dealCreateActivityDescription } from './createActivity';
+import { dealExportReportDescription } from './exportReport';
 import { dealGetReportsDescription } from './getReports';
 import { dealGetReportSectionsDescription } from './getReportSections';
 import { dealAskQuestionDescription } from './askQuestion';
@@ -75,6 +76,12 @@ export const dealDescription: INodeProperties[] = [
 				description: 'Create a new activity for a deal',
 			},
 			{
+				name: 'Export Report',
+				value: 'exportReport',
+				action: 'Export a report',
+				description: 'Wait for a report to finish generating, then export it to a DOCX file',
+			},
+			{
 				name: 'Get',
 				value: 'get',
 				action: 'Get a deal',
@@ -140,6 +147,7 @@ export const dealDescription: INodeProperties[] = [
 	...dealGetStatusOptionsDescription,
 	...dealGetActivitiesDescription,
 	...dealCreateActivityDescription,
+	...dealExportReportDescription,
 	...dealGetReportsDescription,
 	...dealGetReportSectionsDescription,
 	...dealAskQuestionDescription,

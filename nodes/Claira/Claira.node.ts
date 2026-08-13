@@ -35,6 +35,7 @@ import {
 	unwrapResponseData,
 } from './shared/templateGeneration';
 import { partitionReportsForUpdate } from './shared/reportUpdates';
+import { exportReportToDocx, parseOperationIds, selectOverviewReport } from './shared/reportExport';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
 import { contactDescription } from './resources/contacts';
@@ -782,6 +783,7 @@ export class Claira implements INodeType {
 							...(updateResponse as IDataObject),
 							triggered_rules: triggeredRules,
 							created_reports: normalizeTriggeredRulesForCreatedReports(triggeredRules),
+							overview_report: selectOverviewReport(triggeredRules),
 						};
 					} else if (operation === 'getStatusOptions') {
 						const moduleVersion = this.getNodeParameter('moduleVersion', i, 'latest') as string;
@@ -1021,6 +1023,18 @@ export class Claira implements INodeType {
 						);
 
 						responseData = (sectionsResponse.data as IDataObject[]) || sectionsResponse;
+					} else if (operation === 'exportReport') {
+						const exportOptions = this.getNodeParameter('exportOptions', i, {}) as IDataObject;
+
+						responseData = await exportReportToDocx.call(this, clientId, {
+							reportId: ((this.getNodeParameter('reportId', i, '') as string) || '').trim(),
+							reportTitle: ((this.getNodeParameter('reportTitle', i, '') as string) || '').trim(),
+							operationIds: parseOperationIds(this.getNodeParameter('operationIds', i, '')),
+							generationPollingInterval: ((exportOptions.generationPollingInterval as number) || 10) * 1000,
+							generationTimeout: ((exportOptions.generationTimeout as number) || 900) * 1000,
+							exportPollingInterval: ((exportOptions.exportPollingInterval as number) || 3) * 1000,
+							exportTimeout: ((exportOptions.exportTimeout as number) || 180) * 1000,
+						});
 					} else if (operation === 'askQuestion') {
 						const dealId = this.getNodeParameter('dealId', i) as string;
 						const question = this.getNodeParameter('question', i) as string;
