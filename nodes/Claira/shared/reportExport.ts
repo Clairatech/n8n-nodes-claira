@@ -40,30 +40,6 @@ export function isTerminalOperationStatus(status: unknown): boolean {
 	return TERMINAL_OPERATION_STATUSES.includes(String(status || '').toLowerCase());
 }
 
-/**
- * Pick the overview report out of the rules a status change triggered.
- *
- * A status change can fan out into several reports; only the overview one is
- * interesting to the email agent. Skipped rules produced no new content, so
- * they are ignored. ``is_default`` is the fallback for backends that don't yet
- * report ``is_overview``.
- */
-export function selectOverviewReport(triggeredRules: IDataObject[]): ReportReference | null {
-	const overviewRule = triggeredRules.find(
-		(rule) => (rule.is_overview === true || rule.is_default === true) && rule.action !== 'skipped' && rule.dashboard_id,
-	);
-
-	if (!overviewRule) {
-		return null;
-	}
-
-	return {
-		dashboard_id: String(overviewRule.dashboard_id),
-		report_title: (overviewRule.template_title as string) || null,
-		operation_ids: parseOperationIds(overviewRule.operation_ids),
-	};
-}
-
 /** Turn a report title into a safe .docx file name. */
 export function buildExportFileName(reportTitle: string | null | undefined): string {
 	const cleaned = String(reportTitle || 'Report')

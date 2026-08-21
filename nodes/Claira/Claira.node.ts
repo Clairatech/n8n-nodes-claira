@@ -35,7 +35,7 @@ import {
 	unwrapResponseData,
 } from './shared/templateGeneration';
 import { partitionReportsForUpdate } from './shared/reportUpdates';
-import { exportReportToDocx, parseOperationIds, selectOverviewReport } from './shared/reportExport';
+import { exportReport, parseOperationIds } from './shared/reportExport';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
 import { contactDescription } from './resources/contacts';
@@ -783,7 +783,6 @@ export class Claira implements INodeType {
 							...(updateResponse as IDataObject),
 							triggered_rules: triggeredRules,
 							created_reports: normalizeTriggeredRulesForCreatedReports(triggeredRules),
-							overview_report: selectOverviewReport(triggeredRules),
 						};
 					} else if (operation === 'getStatusOptions') {
 						const moduleVersion = this.getNodeParameter('moduleVersion', i, 'latest') as string;
