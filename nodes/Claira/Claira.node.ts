@@ -1010,6 +1010,7 @@ export class Claira implements INodeType {
 								skip_reason,
 								is_default: report.is_default === true,
 								is_reviewed: report.is_reviewed === true,
+								is_deal_snapshot: report.is_deal_snapshot === true,
 							})),
 						};
 					} else if (operation === 'getReportSections') {
