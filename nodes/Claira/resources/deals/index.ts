@@ -13,6 +13,7 @@ import { dealGetReportSectionsDescription } from './getReportSections';
 import { dealAskQuestionDescription } from './askQuestion';
 import { dealAskPipelineQuestionDescription } from './askPipelineQuestion';
 import { dealUpdateReportsDescription } from './updateReports';
+import { dealRunDealSnapshotDescription } from './runDealSnapshot';
 
 const showOnlyForDeals = {
 	resource: ['deals'],
@@ -124,6 +125,12 @@ export const dealDescription: INodeProperties[] = [
 				description: 'Get the available status options for deals',
 			},
 			{
+				name: 'Run Deal Snapshot',
+				value: 'runDealSnapshot',
+				action: 'Run a deal snapshot',
+				description: 'Create or refresh the deal snapshot report and return its dashboard and operation IDs',
+			},
+			{
 				name: 'Set Status',
 				value: 'setStatus',
 				action: 'Set deal status',
@@ -153,4 +160,5 @@ export const dealDescription: INodeProperties[] = [
 	...dealAskQuestionDescription,
 	...dealAskPipelineQuestionDescription,
 	...dealUpdateReportsDescription,
+	...dealRunDealSnapshotDescription,
 ];

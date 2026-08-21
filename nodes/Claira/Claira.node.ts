@@ -36,6 +36,7 @@ import {
 } from './shared/templateGeneration';
 import { partitionReportsForUpdate } from './shared/reportUpdates';
 import { exportReport, parseOperationIds } from './shared/reportExport';
+import { normalizeDealSnapshotResponse } from './shared/dealSnapshot';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
 import { contactDescription } from './resources/contacts';
@@ -1022,6 +1023,18 @@ export class Claira implements INodeType {
 						);
 
 						responseData = (sectionsResponse.data as IDataObject[]) || sectionsResponse;
+					} else if (operation === 'runDealSnapshot') {
+						const dealId = this.getNodeParameter('dealId', i) as string;
+
+						const snapshotResponse = await clairaApiRequest.call(
+							this,
+							'POST',
+							'/credit_analysis/dashboards/deal_snapshot/',
+							clientId,
+							{ deal_id: dealId },
+						);
+
+						responseData = normalizeDealSnapshotResponse.call(this, snapshotResponse);
 					} else if (operation === 'exportReport') {
 						const exportOptions = this.getNodeParameter('exportOptions', i, {}) as IDataObject;
 
