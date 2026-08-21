@@ -35,7 +35,7 @@ import {
 	unwrapResponseData,
 } from './shared/templateGeneration';
 import { partitionReportsForUpdate } from './shared/reportUpdates';
-import { exportReport, parseOperationIds } from './shared/reportExport';
+import { exportReport, parseOperationIds, type ExportFormat } from './shared/reportExport';
 import { normalizeDealSnapshotResponse } from './shared/dealSnapshot';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
@@ -1038,10 +1038,11 @@ export class Claira implements INodeType {
 					} else if (operation === 'exportReport') {
 						const exportOptions = this.getNodeParameter('exportOptions', i, {}) as IDataObject;
 
-						responseData = await exportReportToDocx.call(this, clientId, {
+						responseData = await exportReport.call(this, clientId, {
 							reportId: ((this.getNodeParameter('reportId', i, '') as string) || '').trim(),
 							reportTitle: ((this.getNodeParameter('reportTitle', i, '') as string) || '').trim(),
 							operationIds: parseOperationIds(this.getNodeParameter('operationIds', i, '')),
+							formats: this.getNodeParameter('formats', i, ['docx']) as ExportFormat[],
 							generationPollingInterval: ((exportOptions.generationPollingInterval as number) || 10) * 1000,
 							generationTimeout: ((exportOptions.generationTimeout as number) || 900) * 1000,
 							exportPollingInterval: ((exportOptions.exportPollingInterval as number) || 3) * 1000,

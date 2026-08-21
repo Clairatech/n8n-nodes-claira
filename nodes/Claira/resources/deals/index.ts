@@ -53,16 +53,16 @@ export const dealDescription: INodeProperties[] = [
 		},
 		options: [
 			{
-				name: 'Ask Question',
-				value: 'askQuestion',
-				action: 'Ask a deal question',
-				description: 'Ask a question about a deal and wait for the AI response',
-			},
-			{
 				name: 'Ask Pipeline Question',
 				value: 'askPipelineQuestion',
 				action: 'Ask a pipeline question',
 				description: 'Ask an aggregate/pipeline question across all deals and wait for the AI response',
+			},
+			{
+				name: 'Ask Question',
+				value: 'askQuestion',
+				action: 'Ask a deal question',
+				description: 'Ask a question about a deal and wait for the AI response',
 			},
 			{
 				name: 'Create',
@@ -80,7 +80,7 @@ export const dealDescription: INodeProperties[] = [
 				name: 'Export Report',
 				value: 'exportReport',
 				action: 'Export a report',
-				description: 'Wait for a report to finish generating, then export it to a DOCX file',
+				description: 'Wait for a report to finish generating, then export it to DOCX and/or email HTML',
 			},
 			{
 				name: 'Get',

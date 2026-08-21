@@ -2,6 +2,14 @@ import { sleep, type IDataObject, type IExecuteFunctions } from 'n8n-workflow';
 import { clairaApiRequest } from './transport';
 
 export const DOCX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+export const EMAIL_HTML_MIME_TYPE = 'text/html; charset=utf-8';
+
+export type ExportFormat = 'docx' | 'email_html';
+
+const FILE_EXTENSIONS: Record<ExportFormat, string> = {
+	docx: 'docx',
+	email_html: 'html',
+};
 
 /** Section generation operations stop moving once they reach one of these. */
 const TERMINAL_OPERATION_STATUSES = ['completed', 'failed', 'stopped'];
@@ -40,14 +48,17 @@ export function isTerminalOperationStatus(status: unknown): boolean {
 	return TERMINAL_OPERATION_STATUSES.includes(String(status || '').toLowerCase());
 }
 
-/** Turn a report title into a safe .docx file name. */
-export function buildExportFileName(reportTitle: string | null | undefined): string {
+/** Turn a report title into a safe file name for the given format. */
+export function buildExportFileName(
+	reportTitle: string | null | undefined,
+	format: ExportFormat = 'docx',
+): string {
 	const cleaned = String(reportTitle || 'Report')
 		.replace(/[\\/:*?"<>|]/g, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();
 
-	return `${cleaned || 'Report'}.docx`;
+	return `${cleaned || 'Report'}.${FILE_EXTENSIONS[format]}`;
 }
 
 /** Read the file name out of a Content-Disposition header, if it carries one. */
@@ -65,6 +76,7 @@ export interface ReportExportParams {
 	reportId: string;
 	reportTitle: string;
 	operationIds: string[];
+	formats: ExportFormat[];
 	generationPollingInterval: number;
 	generationTimeout: number;
 	exportPollingInterval: number;
@@ -72,14 +84,15 @@ export interface ReportExportParams {
 }
 
 /**
- * Wait for a report to finish generating, export it to DOCX and return the file.
+ * Wait for a report to finish generating, then export it in every requested format.
  *
- * Never throws on a report that can't be attached: callers feed this straight
- * from a report-generating step that may have produced nothing, and a missing
- * attachment must not take down the run that was going to send it. The
- * ``status`` field says which stage gave up.
+ * Never throws on a report that can't be exported: callers feed this straight from
+ * a report-generating step that may have produced nothing, and a missing report must
+ * not take down the run that was going to send it. ``status`` is 'ready' when at
+ * least one format produced output; ``exports`` carries the per-format outcome, so a
+ * partial success (HTML rendered, DOCX failed) still sends what landed.
  */
-export async function exportReportToDocx(
+export async function exportReport(
 	this: IExecuteFunctions,
 	clientId: string,
 	params: ReportExportParams,
@@ -92,6 +105,9 @@ export async function exportReportToDocx(
 		mime_type: null,
 		file_base64: null,
 		file_size: 0,
+		html_body: null,
+		html_size: 0,
+		exports: {},
 		error: null,
 	};
 
@@ -115,28 +131,54 @@ export async function exportReportToDocx(
 		return result;
 	}
 
-	const exportTask = await requestDashboardExport.call(
-		this,
-		clientId,
-		params.reportId,
-		params.exportPollingInterval,
-		params.exportTimeout,
-	);
-	result.export_id = exportTask.export_id;
+	const formats: ExportFormat[] = params.formats.length > 0 ? params.formats : ['docx'];
+	const exports: IDataObject = {};
+	const errors: string[] = [];
+	let anyReady = false;
 
-	if (exportTask.status !== 'ready' || !exportTask.export_id) {
-		result.status = exportTask.status === 'timeout' ? 'export_timeout' : 'export_failed';
-		result.error = exportTask.error;
-		return result;
+	for (const format of formats) {
+		const exportTask = await requestDashboardExport.call(
+			this,
+			clientId,
+			params.reportId,
+			format,
+			params.exportPollingInterval,
+			params.exportTimeout,
+		);
+		exports[format] = {
+			status: exportTask.status,
+			export_id: exportTask.export_id,
+			error: exportTask.error,
+		};
+
+		if (exportTask.status !== 'ready' || !exportTask.export_id) {
+			errors.push(`${format}: ${exportTask.error}`);
+			continue;
+		}
+
+		const download = await downloadDashboardExport.call(
+			this,
+			clientId,
+			params.reportId,
+			exportTask.export_id,
+			format,
+		);
+		anyReady = true;
+
+		if (format === 'docx') {
+			result.file_name = download.file_name || buildExportFileName(params.reportTitle, 'docx');
+			result.mime_type = DOCX_MIME_TYPE;
+			result.file_base64 = download.buffer.toString('base64');
+			result.file_size = download.buffer.length;
+		} else {
+			result.html_body = download.buffer.toString('utf8');
+			result.html_size = download.buffer.length;
+		}
 	}
 
-	const download = await downloadDashboardExport.call(this, clientId, params.reportId, exportTask.export_id);
-
-	result.status = 'ready';
-	result.file_name = download.file_name || buildExportFileName(params.reportTitle);
-	result.mime_type = DOCX_MIME_TYPE;
-	result.file_base64 = download.file_base64;
-	result.file_size = download.file_size;
+	result.exports = exports;
+	result.status = anyReady ? 'ready' : 'export_failed';
+	result.error = errors.length > 0 ? errors.join('; ') : null;
 
 	return result;
 }
@@ -220,6 +262,7 @@ export async function requestDashboardExport(
 	this: IExecuteFunctions,
 	clientId: string,
 	dashboardId: string,
+	format: ExportFormat,
 	pollingInterval: number,
 	timeout: number,
 ): Promise<{ status: 'ready' | 'failed' | 'timeout'; export_id: string | null; error: string | null }> {
@@ -228,6 +271,8 @@ export async function requestDashboardExport(
 		'POST',
 		`/credit_analysis/dashboards/${dashboardId}/export_tasks/`,
 		clientId,
+		undefined,
+		{ format },
 	);
 	const exportData = (exportResponse.data as IDataObject) || exportResponse;
 	const exportId = exportData.export_id as string;
@@ -245,6 +290,8 @@ export async function requestDashboardExport(
 			'GET',
 			`/credit_analysis/dashboards/${dashboardId}/export_tasks/${exportId}/status/`,
 			clientId,
+			undefined,
+			{ format },
 		);
 		const statusData = (statusResponse.data as IDataObject) || statusResponse;
 		const status = String(statusData.status || '').toLowerCase();
@@ -265,29 +312,27 @@ export async function requestDashboardExport(
 	return { status: 'timeout', export_id: exportId, error: `Export was not ready after ${timeout / 1000} seconds` };
 }
 
-/** Download a finished export and return it base64-encoded. */
+/** Download a finished export and return its bytes. */
 export async function downloadDashboardExport(
 	this: IExecuteFunctions,
 	clientId: string,
 	dashboardId: string,
 	exportId: string,
-): Promise<{ file_name: string | null; file_base64: string; file_size: number }> {
+	format: ExportFormat,
+): Promise<{ file_name: string | null; buffer: Buffer }> {
 	const downloadResponse = (await clairaApiRequest.call(
 		this,
 		'GET',
 		`/credit_analysis/dashboards/${dashboardId}/export_tasks/${exportId}/download/`,
 		clientId,
 		undefined,
-		undefined,
+		{ format },
 		{ Accept: '*/*' },
 		{ encoding: 'arraybuffer', json: false, returnFullResponse: true },
 	)) as unknown as { body: Buffer | ArrayBuffer; headers: IDataObject };
 
-	const fileBuffer = Buffer.from(downloadResponse.body as ArrayBuffer);
-
 	return {
 		file_name: fileNameFromContentDisposition((downloadResponse.headers || {})['content-disposition']),
-		file_base64: fileBuffer.toString('base64'),
-		file_size: fileBuffer.length,
+		buffer: Buffer.from(downloadResponse.body as ArrayBuffer),
 	};
 }
