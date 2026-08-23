@@ -39,28 +39,6 @@ export const dealExportReportDescription: INodeProperties[] = [
 			'Section generation operation IDs to wait for before exporting, as a comma-separated list or a JSON array. Pass the operation_ids returned when the report was created or regenerated.',
 	},
 	{
-		displayName: 'Formats',
-		name: 'formats',
-		type: 'multiOptions',
-		displayOptions: {
-			show: showOnlyForDealExportReport,
-		},
-		options: [
-			{
-				name: 'DOCX',
-				value: 'docx',
-				description: 'A Word document, suitable for an email attachment',
-			},
-			{
-				name: 'Email HTML',
-				value: 'email_html',
-				description: 'An email-safe HTML fragment, suitable for the body of a reply',
-			},
-		],
-		default: ['docx'],
-		description: 'Which formats to export. Each requested format is returned on the same item.',
-	},
-	{
 		displayName: 'Export Options',
 		name: 'exportOptions',
 		type: 'collection',
@@ -79,7 +57,7 @@ export const dealExportReportDescription: INodeProperties[] = [
 					minValue: 1,
 					maxValue: 60,
 				},
-				description: 'How often to check whether the export is ready',
+				description: 'How often to check whether the DOCX export is ready',
 			},
 			{
 				displayName: 'Export Timeout (Seconds)',
@@ -90,7 +68,7 @@ export const dealExportReportDescription: INodeProperties[] = [
 					minValue: 30,
 					maxValue: 900,
 				},
-				description: 'Maximum time to wait for the export to be produced',
+				description: 'Maximum time to wait for the DOCX export to be produced',
 			},
 			{
 				displayName: 'Generation Polling Interval (Seconds)',
