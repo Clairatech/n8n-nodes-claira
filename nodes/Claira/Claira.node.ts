@@ -35,7 +35,8 @@ import {
 	unwrapResponseData,
 } from './shared/templateGeneration';
 import { partitionReportsForUpdate } from './shared/reportUpdates';
-import { exportReportToDocx, parseOperationIds, selectOverviewReport } from './shared/reportExport';
+import { exportReport, parseOperationIds, type ExportFormat } from './shared/reportExport';
+import { normalizeDealSnapshotResponse } from './shared/dealSnapshot';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
 import { contactDescription } from './resources/contacts';
@@ -783,7 +784,6 @@ export class Claira implements INodeType {
 							...(updateResponse as IDataObject),
 							triggered_rules: triggeredRules,
 							created_reports: normalizeTriggeredRulesForCreatedReports(triggeredRules),
-							overview_report: selectOverviewReport(triggeredRules),
 						};
 					} else if (operation === 'getStatusOptions') {
 						const moduleVersion = this.getNodeParameter('moduleVersion', i, 'latest') as string;
@@ -1010,6 +1010,7 @@ export class Claira implements INodeType {
 								skip_reason,
 								is_default: report.is_default === true,
 								is_reviewed: report.is_reviewed === true,
+								is_deal_snapshot: report.is_deal_snapshot === true,
 							})),
 						};
 					} else if (operation === 'getReportSections') {
@@ -1023,13 +1024,26 @@ export class Claira implements INodeType {
 						);
 
 						responseData = (sectionsResponse.data as IDataObject[]) || sectionsResponse;
+					} else if (operation === 'runDealSnapshot') {
+						const dealId = this.getNodeParameter('dealId', i) as string;
+
+						const snapshotResponse = await clairaApiRequest.call(
+							this,
+							'POST',
+							'/credit_analysis/dashboards/deal_snapshot/',
+							clientId,
+							{ deal_id: dealId },
+						);
+
+						responseData = normalizeDealSnapshotResponse.call(this, snapshotResponse);
 					} else if (operation === 'exportReport') {
 						const exportOptions = this.getNodeParameter('exportOptions', i, {}) as IDataObject;
 
-						responseData = await exportReportToDocx.call(this, clientId, {
+						responseData = await exportReport.call(this, clientId, {
 							reportId: ((this.getNodeParameter('reportId', i, '') as string) || '').trim(),
 							reportTitle: ((this.getNodeParameter('reportTitle', i, '') as string) || '').trim(),
 							operationIds: parseOperationIds(this.getNodeParameter('operationIds', i, '')),
+							formats: this.getNodeParameter('formats', i, ['docx']) as ExportFormat[],
 							generationPollingInterval: ((exportOptions.generationPollingInterval as number) || 10) * 1000,
 							generationTimeout: ((exportOptions.generationTimeout as number) || 900) * 1000,
 							exportPollingInterval: ((exportOptions.exportPollingInterval as number) || 3) * 1000,

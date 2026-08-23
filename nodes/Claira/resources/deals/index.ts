@@ -13,6 +13,7 @@ import { dealGetReportSectionsDescription } from './getReportSections';
 import { dealAskQuestionDescription } from './askQuestion';
 import { dealAskPipelineQuestionDescription } from './askPipelineQuestion';
 import { dealUpdateReportsDescription } from './updateReports';
+import { dealRunDealSnapshotDescription } from './runDealSnapshot';
 
 const showOnlyForDeals = {
 	resource: ['deals'],
@@ -52,16 +53,16 @@ export const dealDescription: INodeProperties[] = [
 		},
 		options: [
 			{
-				name: 'Ask Question',
-				value: 'askQuestion',
-				action: 'Ask a deal question',
-				description: 'Ask a question about a deal and wait for the AI response',
-			},
-			{
 				name: 'Ask Pipeline Question',
 				value: 'askPipelineQuestion',
 				action: 'Ask a pipeline question',
 				description: 'Ask an aggregate/pipeline question across all deals and wait for the AI response',
+			},
+			{
+				name: 'Ask Question',
+				value: 'askQuestion',
+				action: 'Ask a deal question',
+				description: 'Ask a question about a deal and wait for the AI response',
 			},
 			{
 				name: 'Create',
@@ -79,7 +80,7 @@ export const dealDescription: INodeProperties[] = [
 				name: 'Export Report',
 				value: 'exportReport',
 				action: 'Export a report',
-				description: 'Wait for a report to finish generating, then export it to a DOCX file',
+				description: 'Wait for a report to finish generating, then export it to DOCX and/or email HTML',
 			},
 			{
 				name: 'Get',
@@ -124,6 +125,12 @@ export const dealDescription: INodeProperties[] = [
 				description: 'Get the available status options for deals',
 			},
 			{
+				name: 'Run Deal Snapshot',
+				value: 'runDealSnapshot',
+				action: 'Run a deal snapshot',
+				description: 'Create or refresh the deal snapshot report and return its dashboard and operation IDs',
+			},
+			{
 				name: 'Set Status',
 				value: 'setStatus',
 				action: 'Set deal status',
@@ -153,4 +160,5 @@ export const dealDescription: INodeProperties[] = [
 	...dealAskQuestionDescription,
 	...dealAskPipelineQuestionDescription,
 	...dealUpdateReportsDescription,
+	...dealRunDealSnapshotDescription,
 ];
