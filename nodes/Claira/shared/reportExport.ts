@@ -76,7 +76,7 @@ export interface ReportExportParams {
 	reportId: string;
 	reportTitle: string;
 	operationIds: string[];
-	formats: ExportFormat[];
+	formats?: ExportFormat[];
 	generationPollingInterval: number;
 	generationTimeout: number;
 	exportPollingInterval: number;
@@ -91,6 +91,9 @@ export interface ReportExportParams {
  * not take down the run that was going to send it. ``status`` is 'ready' when at
  * least one format produced output; ``exports`` carries the per-format outcome, so a
  * partial success (HTML rendered, DOCX failed) still sends what landed.
+ *
+ * An absent or empty ``formats`` falls back to DOCX only, so a node saved before the
+ * Formats option existed keeps exporting exactly what it used to.
  */
 export async function exportReport(
 	this: IExecuteFunctions,
@@ -131,7 +134,7 @@ export async function exportReport(
 		return result;
 	}
 
-	const formats: ExportFormat[] = params.formats.length > 0 ? params.formats : ['docx'];
+	const formats: ExportFormat[] = params.formats?.length ? params.formats : ['docx'];
 	const exports: IDataObject = {};
 	const errors: string[] = [];
 	let anyReady = false;
