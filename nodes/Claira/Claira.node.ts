@@ -37,6 +37,7 @@ import {
 import { partitionReportsForUpdate } from './shared/reportUpdates';
 import { exportReport, parseOperationIds, type ExportFormat } from './shared/reportExport';
 import { normalizeDealSnapshotResponse } from './shared/dealSnapshot';
+import { buildFilePartContentDisposition } from './shared/multipartFileName';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
 import { contactDescription } from './resources/contacts';
@@ -287,7 +288,7 @@ export class Claira implements INodeType {
 					const parts: Buffer[] = [];
 					parts.push(Buffer.from(
 						`--${boundary}\r\n` +
-						`Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
+						`Content-Disposition: ${buildFilePartContentDisposition(fileName)}\r\n` +
 						`Content-Type: ${mimeType}\r\n\r\n`
 					));
 					parts.push(binaryBuffer);
