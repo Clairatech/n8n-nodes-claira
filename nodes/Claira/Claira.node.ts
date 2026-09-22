@@ -38,6 +38,11 @@ import { partitionReportsForUpdate } from './shared/reportUpdates';
 import { exportReport, parseOperationIds, type ExportFormat } from './shared/reportExport';
 import { normalizeDealSnapshotResponse } from './shared/dealSnapshot';
 import { buildFilePartContentDisposition } from './shared/multipartFileName';
+import {
+	extractClairaErrorMessage,
+	isSkippableNonDocumentUpload,
+	isUnsupportedExtensionError,
+} from './shared/uploadFileFilter';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
 import { contactDescription } from './resources/contacts';
@@ -258,6 +263,30 @@ export class Claira implements INodeType {
 					const fileName = binaryData.fileName || 'file';
 					const mimeType = binaryData.mimeType || 'application/octet-stream';
 
+					if (
+						isSkippableNonDocumentUpload({
+							fileName: binaryData.fileName,
+							fileExtension: binaryData.fileExtension,
+							mimeType: binaryData.mimeType,
+						})
+					) {
+						if (this.logger) {
+							this.logger.warn('Skipping unsupported document upload', {
+								fileName: binaryData.fileName,
+								fileExtension: binaryData.fileExtension,
+								mimeType: binaryData.mimeType,
+							});
+						}
+						returnData.push({
+							skipped: true,
+							reason: `Unsupported file type for Claira upload: ${fileName}`,
+							fileName,
+							fileExtension: binaryData.fileExtension,
+							mimeType,
+						});
+						continue;
+					}
+
 					// Detect zip: by extension or mime type (zip uses a different endpoint)
 					const isZip =
 						fileName.toLowerCase().endsWith('.zip') ||
@@ -390,22 +419,25 @@ export class Claira implements INodeType {
 								const axiosError = error as { response?: { status?: number; data?: IDataObject }; statusCode?: number; code?: string; message?: string };
 								const statusCode = axiosError.response?.status || axiosError.statusCode || axiosError.code;
 								const errorResponse = axiosError.response?.data;
-								
-								// Try to extract Flask error message (Flask can return errors in various formats)
-								let errorMessage = 'Unknown error';
-								if (errorResponse) {
-									// Try different common Flask error formats
-									errorMessage =
-										(errorResponse.message as string) ||
-										(errorResponse.error as string) ||
-										(errorResponse.detail as string) ||
-										(errorResponse.description as string) ||
-										(errorResponse.msg as string) ||
-										(Array.isArray(errorResponse.file) ? errorResponse.file[0] : errorResponse.file) as string || // Field-specific errors
-										(typeof errorResponse === 'string' ? errorResponse : null) ||
-										JSON.stringify(errorResponse);
-								} else if (axiosError.message) {
-									errorMessage = axiosError.message;
+								const errorMessage = errorResponse
+									? extractClairaErrorMessage(errorResponse)
+									: axiosError.message || 'Unknown error';
+
+								if (isUnsupportedExtensionError(errorResponse)) {
+									if (this.logger) {
+										this.logger.warn('Skipping file rejected as an unsupported extension', {
+											fileName: binaryData.fileName,
+											mimeType: binaryData.mimeType,
+											errorMessage,
+										});
+									}
+									returnData.push({
+										skipped: true,
+										reason: errorMessage,
+										fileName,
+										mimeType,
+									});
+									continue;
 								}
 								
 								// Log full error details - this will appear in n8n execution logs
