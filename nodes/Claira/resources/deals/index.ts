@@ -140,7 +140,8 @@ export const dealDescription: INodeProperties[] = [
 				name: 'Update Eligible Reports',
 				value: 'updateReports',
 				action: 'Update eligible reports',
-				description: 'Trigger Update Report for all non-reviewed reports in a deal',
+				description:
+					'Trigger Update Report for every eligible report in a deal, in the order its template sequences built them',
 			},
 		],
 		default: 'getAll',
