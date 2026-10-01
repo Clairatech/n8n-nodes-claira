@@ -34,10 +34,8 @@ import {
 	normalizeTriggeredRulesForCreatedReports,
 	unwrapResponseData,
 } from './shared/templateGeneration';
-import { partitionReportsForUpdate } from './shared/reportUpdates';
 import { exportReport, parseOperationIds, type ExportFormat } from './shared/reportExport';
 import { normalizeDealSnapshotResponse } from './shared/dealSnapshot';
-import { buildFilePartContentDisposition } from './shared/multipartFileName';
 import { authDescription } from './resources/auth';
 import { documentDescription } from './resources/documents';
 import { contactDescription } from './resources/contacts';
@@ -288,7 +286,7 @@ export class Claira implements INodeType {
 					const parts: Buffer[] = [];
 					parts.push(Buffer.from(
 						`--${boundary}\r\n` +
-						`Content-Disposition: ${buildFilePartContentDisposition(fileName)}\r\n` +
+						`Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
 						`Content-Type: ${mimeType}\r\n\r\n`
 					));
 					parts.push(binaryBuffer);
@@ -967,53 +965,16 @@ export class Claira implements INodeType {
 					} else if (operation === 'updateReports') {
 						const dealId = this.getNodeParameter('dealId', i) as string;
 
-						const reportsResponse = await clairaApiRequest.call(
+						// The server picks eligible reports and orders them so reports that read
+						// sibling reports as context regenerate after those siblings.
+						const updateResponse = await clairaApiRequest.call(
 							this,
-							'GET',
-							`/credit_analysis/dashboards/${dealId}/`,
+							'POST',
+							`/credit_analysis/deals/${dealId}/update_reports/`,
 							clientId,
 						);
-						const reports = Array.isArray(reportsResponse)
-							? reportsResponse as IDataObject[]
-							: Array.isArray((reportsResponse as IDataObject).data)
-								? (reportsResponse as IDataObject).data as IDataObject[]
-								: [];
-						const { eligibleReports, skippedReports } = partitionReportsForUpdate(reports);
-						const updatedReports: IDataObject[] = [];
 
-						for (const report of eligibleReports) {
-							const reportId = report.id as string;
-							const updateResponse = await clairaApiRequest.call(
-								this,
-								'POST',
-								`/credit_analysis/dashboards/${reportId}/regenerate/`,
-								clientId,
-							);
-							const updateData = unwrapResponseData(updateResponse as IDataObject);
-
-							updatedReports.push({
-								report_id: reportId,
-								report_title: report.title || 'Untitled Report',
-								...updateData,
-							});
-						}
-
-						responseData = {
-							deal_id: dealId,
-							total_reports: reports.length,
-							eligible_reports_count: eligibleReports.length,
-							updated_reports_count: updatedReports.length,
-							skipped_reports_count: skippedReports.length,
-							updated_reports: updatedReports,
-							skipped_reports: skippedReports.map(({ report, skip_reason }) => ({
-								report_id: report.id || null,
-								report_title: report.title || 'Untitled Report',
-								skip_reason,
-								is_default: report.is_default === true,
-								is_reviewed: report.is_reviewed === true,
-								is_deal_snapshot: report.is_deal_snapshot === true,
-							})),
-						};
+						responseData = unwrapResponseData(updateResponse as IDataObject);
 					} else if (operation === 'getReportSections') {
 						const reportId = this.getNodeParameter('reportId', i) as string;
 
